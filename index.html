@@ -4,12 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- SECURITY: connect-src whitelists Google Apps Script's fixed domain (script.google.com) so the
-     products fetch + order/newsletter POSTs work no matter which deployment ID you use. Nothing else
-     is allowed to load or receive data from this page. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none';">
+     products fetch + order/newsletter POSTs work no matter which deployment ID you use. img-src allows
+     any https image because product photos now come from URLs you paste into the sheet (Drive, Imgur,
+     etc.) — we can't know the domain in advance, so every image URL is still validated to be https-only
+     in JS before it's ever put in the page, and it's rendered as a plain <img> (never as HTML). Nothing
+     else is allowed to load or receive data from this page. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none';">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Gharelu Honey Co. — Slow gold, honestly kept.</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="assets/android-chrome-512x512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,500;0,600;1,500&family=Jost:wght@300;400;500;600&family=Noto+Serif+Devanagari:wght@500;600&family=Noto+Sans+Devanagari:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -72,7 +81,7 @@
     padding:20px 32px; max-width:1180px; margin:0 auto; color:var(--ivory);
   }
   .logo{display:flex; align-items:center; gap:10px; font-family:'Bodoni Moda',serif; font-size:21px; letter-spacing:0.01em;}
-  .logo .mark{width:26px; height:26px; flex-shrink:0;}
+  .logo .mark{width:26px; height:26px; flex-shrink:0; object-fit:contain;}
   .nav-links{display:flex; gap:38px; align-items:center;}
   .nav-links a{font-size:13px; text-transform:uppercase; letter-spacing:0.14em; color:var(--ivory); opacity:0.82; transition:opacity .2s;}
   .nav-links a:hover{opacity:1;}
@@ -165,8 +174,16 @@
     margin-bottom:20px; overflow:hidden; position:relative;
   }
   .jar-frame svg{width:58%; height:58%;}
+  .jar-frame img.product-photo{width:100%; height:100%; object-fit:cover;}
+  .product-card.sold-out .jar-frame{opacity:0.4; filter:grayscale(0.4);}
+  .stock-badge{font-size:11px; color:var(--amber-deep); font-weight:500; margin-bottom:6px; display:block;}
+  .stock-badge.out{color:rgba(36,20,8,0.45);}
   .product-card h3{font-family:'Bodoni Moda',serif; font-weight:500; font-size:19px; margin-bottom:6px;}
-  .product-tag{font-size:12.5px; color:rgba(36,20,8,0.55); font-weight:300; margin-bottom:14px; line-height:1.5;}
+  .product-tag{font-size:12.5px; color:rgba(36,20,8,0.55); font-weight:300; margin-bottom:8px; line-height:1.5;}
+  .product-desc{
+    font-size:12.5px; color:rgba(36,20,8,0.5); font-weight:300; line-height:1.55; margin-bottom:14px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
   .product-row{display:flex; align-items:center; justify-content:space-between; margin-top:auto;}
   .price{font-family:'Bodoni Moda',serif; font-size:17px;}
   .add-btn{
@@ -175,6 +192,8 @@
   }
   .add-btn:hover{background:var(--ink); color:var(--ivory);}
   .add-btn:disabled{opacity:0.5; cursor:not-allowed;}
+  .add-btn.sold-out-btn{border-color:rgba(36,20,8,0.25); color:rgba(36,20,8,0.4); cursor:not-allowed;}
+  .add-btn.sold-out-btn:hover{background:none; color:rgba(36,20,8,0.4);}
 
   /* skeleton loaders while products fetch from the sheet */
   .skeleton{background:linear-gradient(90deg,#EFE6D3 25%,#E4D6B8 37%,#EFE6D3 63%); background-size:400% 100%; animation:skeletonLoad 1.4s ease infinite;}
@@ -206,6 +225,8 @@
   .foot-col h4{font-size:12.5px; text-transform:uppercase; letter-spacing:0.14em; margin-bottom:20px; color:rgba(246,239,226,0.5); font-weight:500;}
   .foot-col a, .foot-col p{display:block; font-size:14.5px; margin-bottom:12px; color:rgba(246,239,226,0.82); font-weight:300;}
   .foot-col a:hover{color:var(--amber-glow);}
+  .foot-phone{font-size:14.5px; color:rgba(246,239,226,0.82); font-weight:300;}
+  .foot-phone.pending{color:rgba(246,239,226,0.4); font-style:italic;}
   .newsletter-form{display:flex; border-bottom:1px solid rgba(246,239,226,0.4); padding-bottom:10px; margin-top:6px;}
   .newsletter-form input{
     background:none; border:none; color:var(--ivory); font-family:'Jost',sans-serif; font-size:14px; flex:1; font-weight:300;
@@ -239,14 +260,17 @@
   .close-btn:hover{background:rgba(36,20,8,0.08);}
   .drawer-body{flex:1; overflow-y:auto; padding:12px 28px;}
   .cart-item{display:flex; gap:16px; padding:20px 0; border-bottom:1px solid var(--line-dark);}
-  .cart-item .thumb{width:64px; height:72px; border-radius:3px; background:linear-gradient(160deg,#EFE6D3,#E4D6B8); flex-shrink:0; display:flex; align-items:center; justify-content:center;}
+  .cart-item .thumb{width:64px; height:72px; border-radius:3px; background:linear-gradient(160deg,#EFE6D3,#E4D6B8); flex-shrink:0; display:flex; align-items:center; justify-content:center; overflow:hidden;}
   .cart-item .thumb svg{width:60%; height:60%;}
+  .cart-item .thumb img.product-photo{width:100%; height:100%; object-fit:cover;}
   .cart-item-info{flex:1;}
   .cart-item-info h4{font-family:'Bodoni Moda',serif; font-size:15.5px; font-weight:500; margin-bottom:4px;}
   .cart-item-info .p{font-size:13px; color:rgba(36,20,8,0.55); margin-bottom:10px;}
   .qty-control{display:flex; align-items:center; gap:12px;}
   .qty-control button{width:22px; height:22px; border:1px solid var(--line-dark); border-radius:50%; font-size:13px; display:flex; align-items:center; justify-content:center;}
   .qty-control button:hover{background:var(--ink); color:var(--ivory); border-color:var(--ink);}
+  .qty-control button:disabled{opacity:0.35; cursor:not-allowed;}
+  .qty-control button:disabled:hover{background:none; color:inherit; border-color:var(--line-dark);}
   .cart-item .remove{font-size:12px; text-decoration:underline; color:rgba(36,20,8,0.45); margin-top:8px; display:inline-block;}
   .empty-cart{text-align:center; padding:80px 20px; color:rgba(36,20,8,0.5); font-size:14px;}
   .drawer-foot{padding:26px 28px; border-top:1px solid var(--line-dark);}
@@ -309,16 +333,7 @@
 <header>
   <div class="nav">
     <a href="#" class="logo">
-      <svg class="mark" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <defs>
-          <linearGradient id="navDrip" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#E8B94E"/>
-            <stop offset="100%" stop-color="#B9762A"/>
-          </linearGradient>
-        </defs>
-        <polygon points="20,2 33,10 33,26 20,34 7,26 7,10" fill="none" stroke="#E8B94E" stroke-width="1.8"/>
-        <path d="M20 12c4 5 6.2 9 6.2 12.4a6.2 6.2 0 1 1-12.4 0c0-3.4 2.2-7.4 6.2-12.4z" fill="url(#navDrip)"/>
-      </svg>
+      <img class="mark" src="assets/gharelu-mark-dark-bg.png" alt="Gharelu Honey Co." width="26" height="26">
       Gharelu
     </a>
     <nav class="nav-links">
@@ -423,10 +438,7 @@
   <div class="wrap foot-top">
     <div class="foot-brand">
       <a href="#" class="logo">
-        <svg class="mark" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <polygon points="20,2 33,10 33,26 20,34 7,26 7,10" fill="none" stroke="#E8B94E" stroke-width="1.8"/>
-          <path d="M20 12c4 5 6.2 9 6.2 12.4a6.2 6.2 0 1 1-12.4 0c0-3.4 2.2-7.4 6.2-12.4z" fill="url(#navDrip)"/>
-        </svg>
+        <img class="mark" src="assets/gharelu-mark-dark-bg.png" alt="Gharelu Honey Co." width="26" height="26">
         Gharelu
       </a>
       <p data-i18n="foot.brandp">Raw, single-origin honey from a small apiary keeping to three ridgelines and its own pace.</p>
@@ -441,7 +453,8 @@
       <h4 data-i18n="foot.supportHead">Support</h4>
       <a href="#" data-i18n="foot.shipping">Shipping</a>
       <a href="#" data-i18n="foot.returns">Returns</a>
-      <a href="#" data-i18n="foot.contact">Contact</a>
+      <a href="https://www.ghareluhoney.com" target="_blank" rel="noopener noreferrer">www.ghareluhoney.com</a>
+      <p class="foot-phone" id="footPhone">Phone: coming soon</p>
     </div>
     <div class="foot-col">
       <h4 data-i18n="foot.loopHead">Stay in the loop</h4>
@@ -457,7 +470,6 @@
   </div>
   <div class="wrap foot-bottom">
     <span data-i18n="foot.copyright">© 2026 Gharelu Honey Co.</span>
-    <span data-i18n="foot.demoNote">Demo storefront — no real orders are placed.</span>
   </div>
 </footer>
 
@@ -488,8 +500,25 @@
   // the accompanying apps-script-backend.gs file). The same URL is used for:
   //   GET  ?action=products   -> live product list from your "Products" sheet
   //   POST { type: 'order' | 'newsletter', ... }
+  //
+  // Products sheet columns (header row):
+  //   id | name_en | name_np | tag_en | tag_np | description_en | description_np
+  //   | price | qty | jar | image_url | active
+  //   - image_url: a public https link (Drive "anyone with link" share, Imgur, etc.)
+  //     Leave blank to fall back to the built-in jar illustration.
+  //   - qty: whole-number stock count. Leave blank for "always in stock" (no limit
+  //     shown). At 0 the item shows "Sold out" and can't be added to the cart.
   // =========================================================================
   const APPS_SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+
+  // Optional: point the header/footer logo at a hosted image URL instead of the
+  // bundled assets/gharelu-mark-dark-bg.png file (e.g. a Google Drive share link,
+  // same as product photos). Leave blank to keep using the local file.
+  const LOGO_IMAGE_URL = "";
+
+  // Add your phone number here whenever it's ready, e.g. "+977 98XXXXXXXX" —
+  // the footer shows a "Phone: coming soon" placeholder until this is filled in.
+  const PHONE_NUMBER = "";
 
   // ---------- SECURITY HELPERS ----------
   // Escape any text before it goes into innerHTML — product names/tags now come
@@ -504,6 +533,13 @@
   function isValidEmail(email){
     return typeof email === 'string' && email.length <= 254 &&
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+  // Only accept plain https:// image URLs from the sheet — this blocks javascript:
+  // and data: URIs (a classic way to sneak a script into an "image" field), and
+  // images are always rendered as a real <img src="..."> attribute, never as HTML.
+  function isValidImageUrl(url){
+    if(typeof url !== 'string' || url.length === 0 || url.length > 600) return false;
+    return /^https:\/\/[^\s<>"']+$/i.test(url.trim());
   }
   // Clamps + trims free-text before it's ever sent anywhere.
   function cleanText(val, maxLen){
@@ -535,12 +571,9 @@
   // Only rows where active is TRUE are shown.
   const ALLOWED_JARS = ['wildflower','comb','lavender','set'];
 
-  const DEFAULT_PRODUCTS = [
-    {id:'wildflower', name:{en:'Wildflower Reserve', np:'जंगली फूल रिजर्भ'}, tag:{en:'Raw · amber · floral finish', np:'काँचो · खैरो · फूलजस्तो स्वाद'}, price:24, jar:'wildflower'},
-    {id:'comb', name:{en:'Alpine Comb Cut', np:'हिमाली कम्ब कट'}, tag:{en:'Whole comb, jarred raw', np:'पूरा कम्ब, काँचै बोतलमा'}, price:32, jar:'comb'},
-    {id:'lavender', name:{en:'Lavender Bloom', np:'लेभेन्डर ब्लुम'}, tag:{en:'Infused with hill lavender', np:'पहाडी लेभेन्डरको सुगन्धमा'}, price:28, jar:'lavender'},
-    {id:'set', name:{en:"The Founder's Set", np:'संस्थापकको सेट'}, tag:{en:'All three, gift-boxed', np:'तीनवटै, उपहार बाकसमा'}, price:68, jar:'set'},
-  ];
+  // No demo fallback products — if the sheet can't be reached, the site shows
+  // an honest "couldn't load" message (see renderProducts) rather than fake items.
+  const DEFAULT_PRODUCTS = [];
 
   let PRODUCTS = DEFAULT_PRODUCTS;
 
@@ -563,6 +596,14 @@
         .map(row => {
           const jar = ALLOWED_JARS.includes(row.jar) ? row.jar : 'wildflower';
           const priceNum = Number(row.price);
+          // blank/missing qty = unlimited stock (null); otherwise a whole, non-negative count
+          const qtyRaw = row.qty;
+          let qty = null;
+          if(qtyRaw !== undefined && qtyRaw !== null && String(qtyRaw).trim() !== ''){
+            const qtyNum = Math.floor(Number(qtyRaw));
+            qty = Number.isFinite(qtyNum) && qtyNum >= 0 ? qtyNum : 0;
+          }
+          const imageRaw = cleanText(row.image_url, 600);
           return {
             id: cleanText(row.id, 64),
             name: {
@@ -573,8 +614,14 @@
               en: cleanText(row.tag_en, 200),
               np: cleanText(row.tag_np || row.tag_en, 200)
             },
+            description: {
+              en: cleanText(row.description_en, 400),
+              np: cleanText(row.description_np || row.description_en, 400)
+            },
             price: Number.isFinite(priceNum) && priceNum >= 0 ? priceNum : 0,
-            jar
+            qty,
+            jar,
+            image: isValidImageUrl(imageRaw) ? imageRaw : ''
           };
         })
         .slice(0, 40); // sanity cap
@@ -626,6 +673,8 @@
       'products.addToCart':'Add to cart', 'products.added':'Added',
       'products.errorTitle':"Couldn't load the harvest",
       'products.errorSub':"We're showing our last-known lineup instead.",
+      'products.soldOut':'Sold out',
+      'products.lowStock':'Only {n} left',
       'quote.text':'"The first honey I\'ve tasted that reminded me a jar can have a season, like wine does."',
       'quote.cite':'— Marguerite L., third-year subscriber',
       'foot.brandp':'Raw, single-origin honey from a small apiary keeping to three ridgelines and its own pace.',
@@ -634,7 +683,7 @@
       'foot.loopHead':'Stay in the loop','foot.loopP':'Hear about new harvests before they sell out.',
       'foot.emailPlaceholder':'Your email','foot.join':'Join','foot.joined':'Joined','foot.joining':'Joining…',
       'foot.copyright':'© 2026 Gharelu Honey Co.',
-      'foot.demoNote':'Demo storefront — no real orders are placed.',
+      'foot.phonePending':'Phone: coming soon',
       'foot.invalidEmail':'Please enter a valid email address.',
       'foot.joinError':"Couldn't sign you up — please try again shortly.",
       'cart.title':'Your cart','cart.empty':'Your cart is empty.<br>Add a jar to get started.',
@@ -651,7 +700,7 @@
       'checkout.orderError':"We couldn't place your order — please check your connection and try again.",
       'confirm.title':'Order placed',
       'confirm.p1':"Thank you — your honey is being pulled from this week's harvest log.",
-      'confirm.order':'Order','confirm.p2':'This is a demo storefront, so no real order has been sent or charged.',
+      'confirm.order':'Order','confirm.p2':"We'll email you to confirm payment and shipping — nothing has been charged yet.",
       'confirm.close':'Close',
     },
     np: {
@@ -678,6 +727,8 @@
       'products.addToCart':'कार्टमा थप्नुहोस्', 'products.added':'थपियो',
       'products.errorTitle':'संकलन लोड हुन सकेन',
       'products.errorSub':'हामीले पहिलेको सूची देखाइरहेका छौं।',
+      'products.soldOut':'सकियो',
+      'products.lowStock':'जम्मा {n} बाँकी',
       'quote.text':'"मैले चाखेको पहिलो महमौरी जसले मलाई सम्झायो कि बोतलको पनि आफ्नै सिजन हुन सक्छ, वाइनजस्तै।"',
       'quote.cite':'— मार्गुराइट एल., तेस्रो वर्षको ग्राहक',
       'foot.brandp':'तीन भिरहरूमा आफ्नै गतिमा चल्ने साना मौरी घरबाट, एउटै स्रोतको काँचो महमौरी।',
@@ -686,7 +737,7 @@
       'foot.loopHead':'जानकारीमा रहनुहोस्','foot.loopP':'नयाँ संकलन सकिनुअघि जानकारी पाउनुहोस्।',
       'foot.emailPlaceholder':'तपाईंको इमेल','foot.join':'सामेल हुनुहोस्','foot.joined':'सामेल भयो','foot.joining':'सामेल हुँदै…',
       'foot.copyright':'© २०२६ घरेलु महमौरी कं.',
-      'foot.demoNote':'डेमो पसल — कुनै वास्तविक अर्डर पठाइँदैन।',
+      'foot.phonePending':'फोन: चाँडै आउँदैछ',
       'foot.invalidEmail':'कृपया मान्य इमेल ठेगाना हाल्नुहोस्।',
       'foot.joinError':'सामेल गर्न सकिएन — केहि बेरमा फेरि प्रयास गर्नुहोस्।',
       'cart.title':'तपाईंको कार्ट','cart.empty':'तपाईंको कार्ट खाली छ।<br>सुरु गर्न एउटा बोतल थप्नुहोस्।',
@@ -703,7 +754,7 @@
       'checkout.orderError':'अर्डर राख्न सकिएन — कृपया आफ्नो जडान जाँच गरी फेरि प्रयास गर्नुहोस्।',
       'confirm.title':'अर्डर राखियो',
       'confirm.p1':'धन्यवाद — तपाईंको महमौरी यस साताको संकलन लगबाट झिकिँदैछ।',
-      'confirm.order':'अर्डर','confirm.p2':'यो डेमो पसल हो, त्यसैले कुनै वास्तविक अर्डर पठाइएको वा शुल्क लिइएको छैन।',
+      'confirm.order':'अर्डर','confirm.p2':'भुक्तानी र ढुवानी सुनिश्चित गर्न हामी तपाईंलाई इमेल गर्नेछौं — हाल कुनै शुल्क लिइएको छैन।',
       'confirm.close':'बन्द गर्नुहोस्',
     }
   };
@@ -722,6 +773,7 @@
     });
     renderProducts();
     renderCart();
+    renderPhone();
   }
 
   document.getElementById('langToggle').addEventListener('click', (e)=>{
@@ -758,6 +810,26 @@
     return base + body + (kind==='set' ? '' : lid) + `</svg>`;
   }
 
+  // Renders a sheet-supplied photo when there is one (validated https URL only),
+  // otherwise the built-in jar illustration. data-jar carries the fallback shape
+  // so a broken image link can swap itself out after load.
+  function productVisual(p){
+    if(p.image){
+      return `<img class="product-photo" src="${escapeHtml(p.image)}" alt="${escapeHtml(p.name[LANG] || p.name.en)}" data-jar="${escapeHtml(p.jar)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
+    }
+    return jarSVG(p.jar);
+  }
+  // If a pasted image URL is dead/blocked, swap back to the jar illustration
+  // instead of leaving a broken-image icon on a live storefront.
+  function attachImageFallbacks(container){
+    container.querySelectorAll('img.product-photo').forEach(img=>{
+      img.addEventListener('error', ()=>{
+        const frame = img.closest('.jar-frame, .thumb');
+        if(frame) frame.innerHTML = jarSVG(img.dataset.jar || 'wildflower');
+      }, { once:true });
+    });
+  }
+
   // ---------- STATE ----------
   let cart = {}; // id -> qty
 
@@ -769,20 +841,33 @@
       </div>`;
       return;
     }
-    grid.innerHTML = PRODUCTS.map(p => `
-      <div class="product-card">
-        <div class="jar-frame">${jarSVG(p.jar)}</div>
+    grid.innerHTML = PRODUCTS.map(p => {
+      const soldOut = p.qty !== null && p.qty <= 0;
+      const lowStock = p.qty !== null && p.qty > 0 && p.qty <= 5;
+      const desc = p.description && (p.description[LANG] || p.description.en);
+      let stockBadge = '';
+      if(soldOut) stockBadge = `<span class="stock-badge out">${escapeHtml(t('products.soldOut'))}</span>`;
+      else if(lowStock) stockBadge = `<span class="stock-badge">${escapeHtml(t('products.lowStock').replace('{n}', p.qty))}</span>`;
+      return `
+      <div class="product-card${soldOut ? ' sold-out' : ''}">
+        <div class="jar-frame">${productVisual(p)}</div>
         <h3>${escapeHtml(p.name[LANG] || p.name.en)}</h3>
         <p class="product-tag">${escapeHtml(p.tag[LANG] || p.tag.en)}</p>
+        ${desc ? `<p class="product-desc">${escapeHtml(desc)}</p>` : ''}
+        ${stockBadge}
         <div class="product-row">
           <span class="price">$${Number(p.price).toFixed(2).replace(/\.00$/,'')}</span>
-          <button class="add-btn" data-id="${escapeHtml(p.id)}">${escapeHtml(t('products.addToCart'))}</button>
+          ${soldOut
+            ? `<button class="add-btn sold-out-btn" disabled>${escapeHtml(t('products.soldOut'))}</button>`
+            : `<button class="add-btn" data-id="${escapeHtml(p.id)}">${escapeHtml(t('products.addToCart'))}</button>`}
         </div>
       </div>
-    `).join('');
-    grid.querySelectorAll('.add-btn').forEach(btn=>{
+    `; }).join('');
+    attachImageFallbacks(grid);
+    grid.querySelectorAll('.add-btn:not(.sold-out-btn)').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        addToCart(btn.dataset.id);
+        const added = addToCart(btn.dataset.id);
+        if(!added) return;
         const original = t('products.addToCart');
         btn.textContent = t('products.added');
         btn.disabled = true;
@@ -791,16 +876,27 @@
     });
   }
 
+  function stockLimit(p){
+    return (p && p.qty !== null && p.qty !== undefined) ? p.qty : Infinity;
+  }
   function addToCart(id){
-    if(!PRODUCTS.some(p => p.id === id)) return; // ignore unknown ids
-    cart[id] = (cart[id] || 0) + 1;
+    const p = PRODUCTS.find(p => p.id === id);
+    if(!p) return false; // ignore unknown ids
+    const max = stockLimit(p);
+    const current = cart[id] || 0;
+    if(current >= max) return false; // already at (or beyond) available stock
+    cart[id] = current + 1;
     renderCart();
     openDrawer();
+    return true;
   }
   function changeQty(id, delta){
     if(!cart[id]) return;
-    cart[id] += delta;
-    if(cart[id] <= 0) delete cart[id];
+    const p = PRODUCTS.find(p => p.id === id);
+    const max = stockLimit(p);
+    let next = cart[id] + delta;
+    if(next > max) next = max;
+    if(next <= 0){ delete cart[id]; } else { cart[id] = next; }
     renderCart();
   }
   function removeItem(id){
@@ -831,21 +927,23 @@
 
     body.innerHTML = items.map(([id,qty])=>{
       const p = PRODUCTS.find(p=>p.id===id);
+      const atMax = qty >= stockLimit(p);
       return `
         <div class="cart-item">
-          <div class="thumb">${jarSVG(p.jar)}</div>
+          <div class="thumb">${productVisual(p)}</div>
           <div class="cart-item-info">
             <h4>${escapeHtml(p.name[LANG] || p.name.en)}</h4>
             <div class="p">$${Number(p.price).toFixed(2).replace(/\.00$/,'')}</div>
             <div class="qty-control">
               <button data-act="dec" data-id="${escapeHtml(id)}" aria-label="Decrease quantity">−</button>
               <span>${Number(qty)}</span>
-              <button data-act="inc" data-id="${escapeHtml(id)}" aria-label="Increase quantity">+</button>
+              <button data-act="inc" data-id="${escapeHtml(id)}" aria-label="Increase quantity" ${atMax ? 'disabled' : ''}>+</button>
             </div>
             <a class="remove" data-act="remove" data-id="${escapeHtml(id)}">${escapeHtml(t('cart.remove'))}</a>
           </div>
         </div>`;
     }).join('');
+    attachImageFallbacks(body);
 
     foot.innerHTML = `
       <div class="subtotal-row"><span>${escapeHtml(t('cart.subtotal'))}</span><span class="amt">$${cartTotal().toFixed(2)}</span></div>
@@ -927,12 +1025,16 @@
       }
 
       const orderNum = 'GH-' + Math.floor(10000 + Math.random()*89999);
-      const itemsSummary = Object.entries(cart)
-        .filter(([id]) => PRODUCTS.some(p => p.id === id))
+      const validCartEntries = Object.entries(cart).filter(([id]) => PRODUCTS.some(p => p.id === id));
+      const itemsSummary = validCartEntries
         .map(([id,qty])=>{
           const p = PRODUCTS.find(p=>p.id===id);
           return `${p.name.en} x${qty}`;
         }).join(', ');
+      // structured id/qty pairs so the backend can validate & decrement stock server-side
+      const itemsDetailed = validCartEntries.map(([id,qty]) => ({
+        id, qty: Math.max(1, Math.min(99, Math.floor(Number(qty)) || 0))
+      }));
 
       const submitBtn = form.querySelector('.place-order-btn');
       const originalLabel = submitBtn.textContent;
@@ -940,13 +1042,17 @@
       submitBtn.disabled = true;
 
       try{
-        await sendToSheet({
+        const result = await sendToSheet({
           type: 'order',
           orderNumber: orderNum,
           name, email, address, city, postal,
           items: itemsSummary,
+          itemsData: JSON.stringify(itemsDetailed),
           total: cartTotal().toFixed(2)
         });
+        if(result && result.status === 'error'){
+          throw new Error(result.message || 'order rejected');
+        }
         showConfirmation(orderNum);
       } catch(err){
         console.warn('Order failed:', err);
@@ -1068,8 +1174,37 @@
     }
   });
 
+  function applyLogoOverride(){
+    if(!LOGO_IMAGE_URL) return; // keep the bundled local file
+    if(!isValidImageUrl(LOGO_IMAGE_URL)){
+      console.warn('LOGO_IMAGE_URL must be a plain https:// link — ignoring it.');
+      return;
+    }
+    document.querySelectorAll('.logo .mark').forEach(img=>{
+      img.src = LOGO_IMAGE_URL;
+      // if the hosted logo fails to load, fall back to the bundled file rather
+      // than showing a broken image in the header.
+      img.addEventListener('error', ()=>{ img.src = 'assets/gharelu-mark-dark-bg.png'; }, { once:true });
+    });
+  }
+
+  function renderPhone(){
+    const el = document.getElementById('footPhone');
+    if(!el) return;
+    const phone = cleanText(PHONE_NUMBER, 40);
+    if(phone){
+      const telHref = 'tel:' + phone.replace(/[^\d+]/g, '');
+      el.innerHTML = `<a href="${escapeHtml(telHref)}">${escapeHtml(phone)}</a>`;
+      el.classList.remove('pending');
+    } else {
+      el.textContent = t('foot.phonePending');
+      el.classList.add('pending');
+    }
+  }
+
   // ---------- INIT ----------
   applyLanguage();
+  applyLogoOverride();
   loadProducts();
   buildHexGrid();
   initReveal();
