@@ -296,6 +296,7 @@
   }
   .modal-overlay.open{opacity:1; pointer-events:auto;}
   .modal{
+    position:relative;
     background:var(--ivory); width:100%; max-width:460px; border-radius:4px; max-height:88vh; overflow-y:auto;
     transform:translateY(16px) scale(0.98); transition:transform .3s cubic-bezier(.2,.8,.3,1); padding:38px 36px;
   }
@@ -331,7 +332,6 @@
     .nav-links{display:none;}
   }
   @media (max-width:520px){
-    .product-grid{grid-template-columns:1fr;}
     .foot-top{grid-template-columns:1fr;}
     section{padding:70px 0;}
     .hero-inner{padding:80px 24px 60px;}
@@ -561,6 +561,10 @@
   // Clamps + trims free-text before it's ever sent anywhere.
   function cleanText(val, maxLen){
     return String(val || '').trim().slice(0, maxLen || 200);
+  }
+  // Displays a price in Nepali Rupees, e.g. 1277 -> "Rs. 1,277".
+  function formatPrice(amount){
+    return 'Rs. ' + Math.round(Number(amount) || 0).toLocaleString('en-IN');
   }
 
   function endpointConfigured(){
@@ -919,7 +923,7 @@
         ${desc ? `<p class="product-desc">${escapeHtml(desc)}</p>` : ''}
         ${stockBadge}
         <div class="product-row">
-          <span class="price">$${Number(p.price).toFixed(2).replace(/\.00$/,'')}</span>
+          <span class="price">${formatPrice(p.price)}</span>
           ${soldOut
             ? `<button class="add-btn sold-out-btn" disabled>${escapeHtml(t('products.soldOut'))}</button>`
             : `<button class="add-btn" data-id="${escapeHtml(p.id)}">${escapeHtml(t('products.addToCart'))}</button>`}
@@ -996,7 +1000,7 @@
           <div class="thumb">${productVisual(p)}</div>
           <div class="cart-item-info">
             <h4>${escapeHtml(p.name[LANG] || p.name.en)}</h4>
-            <div class="p">$${Number(p.price).toFixed(2).replace(/\.00$/,'')}</div>
+            <div class="p">${formatPrice(p.price)}</div>
             <div class="qty-control">
               <button data-act="dec" data-id="${escapeHtml(id)}" aria-label="Decrease quantity">−</button>
               <span>${Number(qty)}</span>
@@ -1009,7 +1013,7 @@
     attachImageFallbacks(body);
 
     foot.innerHTML = `
-      <div class="subtotal-row"><span>${escapeHtml(t('cart.subtotal'))}</span><span class="amt">$${cartTotal().toFixed(2)}</span></div>
+      <div class="subtotal-row"><span>${escapeHtml(t('cart.subtotal'))}</span><span class="amt">${formatPrice(cartTotal())}</span></div>
       <div class="drawer-note">${escapeHtml(t('cart.note'))}</div>
       <button class="btn btn-dark checkout-btn" id="checkoutBtn">${escapeHtml(t('cart.checkout'))}</button>
     `;
@@ -1041,8 +1045,11 @@
     closeDrawer();
     const itemWord = cartCount()>1 ? t('checkout.itemsPlural') : t('checkout.items');
     modalContent.innerHTML = `
+      <button class="close-btn" id="closeCheckoutBtn" aria-label="Close checkout" style="position:absolute; top:18px; right:18px;">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M1 1l14 14M15 1L1 15" stroke="#241408" stroke-width="1.4"/></svg>
+      </button>
       <h3>${escapeHtml(t('checkout.title'))}</h3>
-      <p class="sub-note">${escapeHtml(t('cart.subtotal'))}: $${cartTotal().toFixed(2)} · ${cartCount()} ${escapeHtml(itemWord)}</p>
+      <p class="sub-note">${escapeHtml(t('cart.subtotal'))}: ${formatPrice(cartTotal())} · ${cartCount()} ${escapeHtml(itemWord)}</p>
       <div class="inline-error-banner" id="checkoutBanner" style="display:none;"></div>
       <form id="checkoutForm" novalidate>
         <div class="field"><label>${escapeHtml(t('checkout.name'))}</label><input required maxlength="100" name="name" placeholder="${escapeHtml(t('checkout.namePh'))}"></div>
@@ -1054,10 +1061,12 @@
           <div class="field"><label>${escapeHtml(t('checkout.postal'))}</label><input required maxlength="20" name="postal" placeholder="${escapeHtml(t('checkout.postalPh'))}"></div>
         </div>
         <input type="text" name="hp_field" class="hp-field" tabindex="-1" autocomplete="off" aria-hidden="true">
-        <button type="submit" class="btn btn-primary place-order-btn">${escapeHtml(t('checkout.placeOrder'))} $${cartTotal().toFixed(2)}</button>
+        <button type="submit" class="btn btn-primary place-order-btn">${escapeHtml(t('checkout.placeOrder'))} ${formatPrice(cartTotal())}</button>
       </form>
     `;
     modalOverlay.classList.add('open');
+
+    document.getElementById('closeCheckoutBtn').addEventListener('click', closeCheckout);
 
     const form = document.getElementById('checkoutForm');
     form.addEventListener('submit', async (e)=>{
@@ -1087,7 +1096,6 @@
         return;
       }
 
-      const orderNum = 'GH-' + Math.floor(10000 + Math.random()*89999);
       const validCartEntries = Object.entries(cart).filter(([id]) => PRODUCTS.some(p => p.id === id));
       const itemsSummary = validCartEntries
         .map(([id,qty])=>{
@@ -1105,9 +1113,10 @@
       submitBtn.disabled = true;
 
       try{
+        // The server generates and returns the unique order number (e.g. G00001NP) —
+        // nothing order-number-related is sent from the browser.
         const result = await sendToSheet({
           type: 'order',
-          orderNumber: orderNum,
           name, email, address, city, postal,
           items: itemsSummary,
           itemsData: JSON.stringify(itemsDetailed),
@@ -1116,7 +1125,7 @@
         if(result && result.status === 'error'){
           throw new Error(result.message || 'order rejected');
         }
-        showConfirmation(orderNum);
+        showConfirmation(result && result.orderNumber ? result.orderNumber : '');
       } catch(err){
         console.warn('Order failed:', err);
         banner.textContent = t('checkout.orderError');
@@ -1133,7 +1142,7 @@
         <svg class="confirm-icon" viewBox="0 0 52 52" fill="none"><circle cx="26" cy="26" r="24" stroke="#B9762A" stroke-width="1.6"/><path d="M16 27l7 7 14-14" stroke="#B9762A" stroke-width="2"/></svg>
         <h3>${escapeHtml(t('confirm.title'))}</h3>
         <p>${escapeHtml(t('confirm.p1'))}</p>
-        <div class="order-num">${escapeHtml(t('confirm.order'))} ${escapeHtml(orderNum)}</div>
+        ${orderNum ? `<div class="order-num">${escapeHtml(t('confirm.order'))} ${escapeHtml(orderNum)}</div>` : ''}
         <p>${escapeHtml(t('confirm.p2'))}</p>
         <button class="btn btn-dark" style="margin-top:20px; width:100%; padding:14px;" id="closeConfirmBtn">${escapeHtml(t('confirm.close'))}</button>
       </div>
