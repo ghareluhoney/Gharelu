@@ -204,6 +204,16 @@
     border:1px dashed var(--line-dark); border-radius:4px;
   }
 
+  /* ---------- HARVEST PICKER ---------- */
+  .harvest-picker{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:40px;}
+  .harvest-pill{
+    padding:10px 20px; font-size:12.5px; text-transform:uppercase; letter-spacing:0.1em; font-weight:500;
+    border:1px solid var(--line-dark); border-radius:999px; color:rgba(36,20,8,0.65); transition:all .2s;
+    background:transparent;
+  }
+  .harvest-pill:hover{border-color:var(--amber-deep); color:var(--amber-deep);}
+  .harvest-pill.active{background:var(--ink); border-color:var(--ink); color:var(--ivory);}
+
   /* ---------- QUOTE ---------- */
   .quote-section{
     background: linear-gradient(160deg, var(--amber-deep) 0%, #9C5F1E 100%);
@@ -369,6 +379,17 @@
   </div>
 </section>
 
+<section class="products" id="shop">
+  <div class="wrap">
+    <div class="products-head">
+      <h2 data-i18n="products.title">The current harvest</h2>
+      <p data-i18n="products.sub">Four honeys, poured this season. Quantities are limited to what the hives actually gave us.</p>
+    </div>
+    <div class="harvest-picker" id="harvestPicker"></div>
+    <div class="product-grid" id="productGrid"></div>
+  </div>
+</section>
+
 <section class="story" id="story">
   <div class="wrap story-grid">
     <svg class="comb-art" viewBox="0 0 300 300" fill="none">
@@ -414,16 +435,6 @@
         <p data-i18n="values.v3p">Each label is written by hand and numbered against our harvest log — you can ask us exactly which week yours came from.</p>
       </div>
     </div>
-  </div>
-</section>
-
-<section class="products" id="shop">
-  <div class="wrap">
-    <div class="products-head">
-      <h2 data-i18n="products.title">The current harvest</h2>
-      <p data-i18n="products.sub">Four honeys, poured this season. Quantities are limited to what the hives actually gave us.</p>
-    </div>
-    <div class="product-grid" id="productGrid"></div>
   </div>
 </section>
 
@@ -502,12 +513,18 @@
   //   POST { type: 'order' | 'newsletter', ... }
   //
   // Products sheet columns (header row):
-  //   id | name_en | name_np | tag_en | tag_np | description_en | description_np
-  //   | price | qty | jar | image_url | active
+  //   id | name | tag | description | price | qty | jar | image_url | harvest_month | active
+  //   - Just write everything in English — name, tag, description. The site's
+  //     menus/buttons still switch to Nepali with the EN/NP toggle, but your
+  //     product text stays as you typed it either way. No separate _np columns.
   //   - image_url: a public https link (Drive "anyone with link" share, Imgur, etc.)
   //     Leave blank to fall back to the built-in jar illustration.
   //   - qty: whole-number stock count. Leave blank for "always in stock" (no limit
   //     shown). At 0 the item shows "Sold out" and can't be added to the cart.
+  //   - harvest_month: which harvest round this jar came from, e.g. "Chaitra"
+  //     "Baisakh", "Asar", "Kartik" — or plain English months. Type whatever
+  //     label you want; the site builds the picker pills from whatever values
+  //     it finds, so no code changes are needed when a new harvest starts.
   // =========================================================================
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwPrGWm5QVhccvSUttGA4m1pPr9KWGmh8RBl0zoUQDbZD-4CgXyVzwd55KVX7GyCyU4/exec";
 
@@ -566,7 +583,7 @@
   // =========================================================================
   // PRODUCTS — loaded live from your Google Sheet, with a safe fallback
   // =========================================================================
-  // Expected sheet columns (header row): id | name_en | name_np | tag_en | tag_np | price | jar | active
+  // Expected sheet columns (header row): id | name | tag | price | jar | active
   // "jar" should be one of: wildflower, comb, lavender, set (anything else falls back to a default jar icon).
   // Only rows where active is TRUE are shown.
   const ALLOWED_JARS = ['wildflower','comb','lavender','set'];
@@ -576,11 +593,15 @@
   const DEFAULT_PRODUCTS = [];
 
   let PRODUCTS = DEFAULT_PRODUCTS;
+  // 'all' shows everything; otherwise this holds one of the harvest_month
+  // values pulled live from the sheet (see renderHarvestPicker).
+  let activeHarvest = 'all';
 
   async function loadProducts(){
     renderProductsSkeleton();
     if(!endpointConfigured()){
       PRODUCTS = DEFAULT_PRODUCTS;
+      renderHarvestPicker();
       renderProducts();
       return;
     }
@@ -607,21 +628,22 @@
           return {
             id: cleanText(row.id, 64),
             name: {
-              en: cleanText(row.name_en || row.id, 120),
-              np: cleanText(row.name_np || row.name_en || row.id, 120)
+              en: cleanText(row.name || row.id, 120),
+              np: cleanText(row.name || row.id, 120)
             },
             tag: {
-              en: cleanText(row.tag_en, 200),
-              np: cleanText(row.tag_np || row.tag_en, 200)
+              en: cleanText(row.tag, 200),
+              np: cleanText(row.tag, 200)
             },
             description: {
-              en: cleanText(row.description_en, 400),
-              np: cleanText(row.description_np || row.description_en, 400)
+              en: cleanText(row.description, 400),
+              np: cleanText(row.description, 400)
             },
             price: Number.isFinite(priceNum) && priceNum >= 0 ? priceNum : 0,
             qty,
             jar,
-            image: isValidImageUrl(imageRaw) ? imageRaw : ''
+            image: isValidImageUrl(imageRaw) ? imageRaw : '',
+            harvest: cleanText(row.harvest_month, 60)
           };
         })
         .slice(0, 40); // sanity cap
@@ -632,6 +654,7 @@
       console.warn('Could not load products from sheet, showing defaults:', err);
       PRODUCTS = DEFAULT_PRODUCTS;
     }
+    renderHarvestPicker();
     renderProducts();
   }
 
@@ -644,6 +667,36 @@
         <div class="skeleton sk-line" style="width:50%; height:10px;"></div>
       </div>
     `).join('');
+  }
+
+  // ---------- HARVEST PICKER ----------
+  // Builds the "which harvest?" pills from whatever harvest_month values are
+  // actually present on active products — add/rename a harvest in the sheet
+  // and the picker updates itself, no code changes needed.
+  function renderHarvestPicker(){
+    const wrap = document.getElementById('harvestPicker');
+    if(!wrap) return;
+    const months = [];
+    PRODUCTS.forEach(p => {
+      if(p.harvest && !months.includes(p.harvest)) months.push(p.harvest);
+    });
+    if(months.length === 0){
+      wrap.innerHTML = '';
+      activeHarvest = 'all';
+      return;
+    }
+    if(activeHarvest !== 'all' && !months.includes(activeHarvest)) activeHarvest = 'all';
+    const pills = [`<button type="button" class="harvest-pill${activeHarvest==='all'?' active':''}" data-harvest="all">${escapeHtml(t('products.allHarvests'))}</button>`]
+      .concat(months.map(m => `<button type="button" class="harvest-pill${activeHarvest===m?' active':''}" data-harvest="${escapeHtml(m)}">${escapeHtml(m)}</button>`));
+    wrap.innerHTML = pills.join('');
+    wrap.querySelectorAll('.harvest-pill').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        activeHarvest = btn.dataset.harvest;
+        renderHarvestPicker();
+        renderProducts();
+        document.getElementById('shop').scrollIntoView({ behavior:'smooth', block:'start' });
+      });
+    });
   }
 
   // ---------- I18N ----------
@@ -675,6 +728,8 @@
       'products.errorSub':"We're showing our last-known lineup instead.",
       'products.soldOut':'Sold out',
       'products.lowStock':'Only {n} left',
+      'products.allHarvests':'All harvests',
+      'products.noneForHarvest':"No jars from this harvest right now — check back soon.",
       'quote.text':'"The first honey I\'ve tasted that reminded me a jar can have a season, like wine does."',
       'quote.cite':'— Marguerite L., third-year subscriber',
       'foot.brandp':'Raw, single-origin honey from a small apiary keeping to three ridgelines and its own pace.',
@@ -729,6 +784,8 @@
       'products.errorSub':'हामीले पहिलेको सूची देखाइरहेका छौं।',
       'products.soldOut':'सकियो',
       'products.lowStock':'जम्मा {n} बाँकी',
+      'products.allHarvests':'सबै संकलनहरू',
+      'products.noneForHarvest':'यो संकलनबाट हाल कुनै बोतल छैन — छिट्टै हेर्नुहोस्।',
       'quote.text':'"मैले चाखेको पहिलो महमौरी जसले मलाई सम्झायो कि बोतलको पनि आफ्नै सिजन हुन सक्छ, वाइनजस्तै।"',
       'quote.cite':'— मार्गुराइट एल., तेस्रो वर्षको ग्राहक',
       'foot.brandp':'तीन भिरहरूमा आफ्नै गतिमा चल्ने साना मौरी घरबाट, एउटै स्रोतको काँचो महमौरी।',
@@ -771,6 +828,7 @@
     document.querySelectorAll('.lang-btn').forEach(b=>{
       b.classList.toggle('active', b.dataset.lang === LANG);
     });
+    renderHarvestPicker();
     renderProducts();
     renderCart();
     renderPhone();
@@ -841,7 +899,12 @@
       </div>`;
       return;
     }
-    grid.innerHTML = PRODUCTS.map(p => {
+    const visible = activeHarvest === 'all' ? PRODUCTS : PRODUCTS.filter(p => p.harvest === activeHarvest);
+    if(visible.length === 0){
+      grid.innerHTML = `<div class="products-error">${escapeHtml(t('products.noneForHarvest'))}</div>`;
+      return;
+    }
+    grid.innerHTML = visible.map(p => {
       const soldOut = p.qty !== null && p.qty <= 0;
       const lowStock = p.qty !== null && p.qty > 0 && p.qty <= 5;
       const desc = p.description && (p.description[LANG] || p.description.en);
