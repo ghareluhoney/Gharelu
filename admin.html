@@ -330,8 +330,8 @@
       </div>
 
       <div class="field">
-        <label for="f-price">Price ($)</label>
-        <input type="number" id="f-price" step="0.01" min="0" placeholder="12.00" />
+        <label for="f-price">Price (Rs.)</label>
+        <input type="number" id="f-price" step="1" min="0" placeholder="1200" />
       </div>
 
       <div class="field">
@@ -397,6 +397,11 @@ let products = [];      // cache of the last admin_list response
 let editingId = null;   // null while adding a new jar
 
 const $ = (id) => document.getElementById(id);
+
+// Displays a price in Nepali Rupees, e.g. 1200 -> "Rs. 1,200" (matches index.html).
+function formatPrice(amount) {
+  return 'Rs. ' + Math.round(Number(amount) || 0).toLocaleString('en-IN');
+}
 
 /* ---------------- networking ----------------
    Sent as text/plain so the browser treats this as a "simple request" and
@@ -523,7 +528,6 @@ function cardHtml(p) {
   const active = p.active === true || String(p.active).toUpperCase() === 'TRUE';
   const jarColor = JAR_COLORS[p.jar] || JAR_COLORS.wildflower;
   const img = p.image_url ? '<img src="' + escapeAttr(p.image_url) + '" alt="" loading="lazy">' : '<span class="hex placeholder-hex"></span>';
-  const price = (Number(p.price) || 0).toFixed(2);
   return (
     '<div class="card' + (active ? '' : ' inactive') + '">' +
       '<div class="card-media">' +
@@ -535,7 +539,7 @@ function cardHtml(p) {
         '<h3>' + escapeHtml(p.name || 'Untitled') + '</h3>' +
         (p.tag ? '<div class="card-tag">' + escapeHtml(p.tag) + '</div>' : '') +
         '<div class="card-meta-row">' +
-          '<span class="price">$' + price + '</span>' +
+          '<span class="price">' + formatPrice(p.price) + '</span>' +
           (p.harvest_month ? '<span class="harvest-chip"><span class="hex"></span>' + escapeHtml(p.harvest_month) + '</span>' : '<span></span>') +
         '</div>' +
         stockGauge(p) +
@@ -630,7 +634,7 @@ async function saveProduct() {
     name: name,
     tag: $('f-tag').value.trim(),
     description: $('f-description').value.trim(),
-    price: Number($('f-price').value) || 0,
+    price: Math.round(Number($('f-price').value)) || 0,
     qty: qtyVal === '' ? '' : Math.max(0, Math.floor(Number(qtyVal)) || 0),
     jar: $('f-jar').value,
     image_url: editingId ? (products.find(p => p.id === editingId)?.image_url || '') : '',
