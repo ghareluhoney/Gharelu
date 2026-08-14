@@ -558,6 +558,8 @@
 
   const PREORDER_QTY_CAP = 10;
 
+  const CART_STORAGE_KEY = 'gharelu_cart_v1';
+
   function escapeHtml(str){
     if(str === undefined || str === null) return '';
     return String(str).replace(/[&<>"']/g, ch => ({
@@ -611,6 +613,7 @@
       PRODUCTS = DEFAULT_PRODUCTS;
       renderHarvestPicker();
       renderProducts();
+      renderCart();
       return;
     }
     try{
@@ -665,6 +668,8 @@
     }
     renderHarvestPicker();
     renderProducts();
+    reconcileCartWithProducts();
+    renderCart();
   }
 
   function renderProductsSkeleton(){
@@ -967,7 +972,55 @@
     return p.qty;
   }
 
-  let cart = {};
+  // ---------- CART PERSISTENCE (localStorage) ----------
+  // Cart survives page refresh / reopening the tab. It's cleared only when an
+  // order is successfully placed, or if the browser's storage is unavailable
+  // (private/incognito modes sometimes block it — the site still works, it
+  // just won't remember the cart across a refresh in that case).
+  function loadCartFromStorage(){
+    try{
+      const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+      if(!raw) return {};
+      const parsed = JSON.parse(raw);
+      if(!parsed || typeof parsed !== 'object') return {};
+      const clean = {};
+      Object.entries(parsed).forEach(([id, qty])=>{
+        const n = Math.floor(Number(qty));
+        if(typeof id === 'string' && id.length > 0 && id.length <= 64 && Number.isFinite(n) && n > 0){
+          clean[id] = Math.min(n, 99);
+        }
+      });
+      return clean;
+    } catch(err){
+      console.warn('Could not read saved cart:', err);
+      return {};
+    }
+  }
+  function saveCartToStorage(){
+    try{
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    } catch(err){
+      console.warn('Could not save cart (storage unavailable or full):', err);
+    }
+  }
+  // Once products are loaded from the sheet, drop/clamp any saved cart lines
+  // that no longer exist or exceed current stock, so a refreshed cart never
+  // shows something that can't actually be ordered.
+  function reconcileCartWithProducts(){
+    let changed = false;
+    Object.keys(cart).forEach(id=>{
+      const p = PRODUCTS.find(p => p.id === id);
+      if(!p){ delete cart[id]; changed = true; return; }
+      const max = stockLimit(p);
+      if(cart[id] > max){
+        if(max <= 0){ delete cart[id]; } else { cart[id] = max; }
+        changed = true;
+      }
+    });
+    if(changed) saveCartToStorage();
+  }
+
+  let cart = loadCartFromStorage();
 
   function renderProducts(){
     const grid = document.getElementById('productGrid');
@@ -1032,6 +1085,7 @@
     const current = cart[id] || 0;
     if(current >= max) return false;
     cart[id] = current + 1;
+    saveCartToStorage();
     renderCart();
     openDrawer();
     return true;
@@ -1043,10 +1097,12 @@
     let next = cart[id] + delta;
     if(next > max) next = max;
     if(next <= 0){ delete cart[id]; } else { cart[id] = next; }
+    saveCartToStorage();
     renderCart();
   }
   function removeItem(id){
     delete cart[id];
+    saveCartToStorage();
     renderCart();
   }
   function cartCount(){
@@ -1271,6 +1327,7 @@
     document.getElementById('closeConfirmBtn').addEventListener('click', ()=>{
       closeCheckout();
       cart = {};
+      saveCartToStorage();
       renderCart();
     });
   }
