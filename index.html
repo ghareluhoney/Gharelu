@@ -151,6 +151,31 @@
   .story p + p{margin-top:18px;}
   .story-sign{margin-top:34px; font-family:'Bodoni Moda',serif; font-style:italic; font-size:18px; color:var(--amber-deep);}
 
+  /* ---------- RIDGELINE GALLERY ---------- */
+  .ridgeline{background:var(--ivory);}
+  .ridgeline-grid{display:grid; grid-template-columns:0.85fr 1.15fr; gap:70px; align-items:center;}
+  .ridgeline-grid h2{font-size:clamp(30px,3.6vw,44px); max-width:11ch; margin-bottom:26px;}
+  .ridgeline-grid > div:first-child p{font-size:16.5px; line-height:1.75; color:rgba(36,20,8,0.72); font-weight:300; max-width:48ch;}
+  .ridgeline-gallery{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .ridgeline-gallery .ridge-photo{
+    border-radius:4px; overflow:hidden; background:linear-gradient(160deg,#EFE6D3 0%, #E4D6B8 100%);
+    aspect-ratio:4/5; position:relative;
+  }
+  .ridgeline-gallery .ridge-photo:first-child{grid-column:1/-1; aspect-ratio:16/9;}
+  .ridgeline-gallery .ridge-photo img{width:100%; height:100%; object-fit:cover;}
+  .ridgeline-gallery .ridge-photo .ridge-caption{
+    position:absolute; left:0; right:0; bottom:0; padding:10px 14px;
+    background:linear-gradient(0deg, rgba(20,13,7,0.6), transparent);
+    color:var(--ivory); font-size:12px; letter-spacing:0.02em;
+  }
+  .ridgeline-empty{
+    grid-column:1/-1; padding:40px 20px; text-align:center; font-size:13.5px;
+    color:rgba(36,20,8,0.5); border:1px dashed var(--line-dark); border-radius:4px;
+  }
+  @media (max-width:900px){
+    .ridgeline-grid{grid-template-columns:1fr;}
+  }
+
   /* ---------- VALUES ---------- */
   .values{background:var(--espresso-2); color:var(--ivory);}
   .values-head{max-width:640px; margin:0 auto 64px; text-align:center;}
@@ -361,6 +386,7 @@
     </a>
     <nav class="nav-links">
       <a href="#story" data-i18n="nav.story">Story</a>
+      <a href="#ridgeline" data-i18n="nav.ridgeline">Ridgelines</a>
       <a href="#shop" data-i18n="nav.shop">Shop</a>
       <a href="#values" data-i18n="nav.craft">Craft</a>
       <a href="#footer" data-i18n="nav.contact">Contact</a>
@@ -424,6 +450,17 @@
   </div>
 </section>
 
+<section class="ridgeline" id="ridgeline">
+  <div class="wrap ridgeline-grid">
+    <div>
+      <span class="label eyebrow" data-i18n="ridgeline.eyebrow">From the ridgelines</span>
+      <h2 data-i18n="ridgeline.title">A look at where it comes from</h2>
+      <p data-i18n="ridgeline.p1">Three ridgelines, a short walk apart from each other but each with its own flowers, light, and weather — which is exactly why the honey from one never tastes quite like the honey from another. These are the hives and the hands behind every jar.</p>
+    </div>
+    <div class="ridgeline-gallery" id="ridgelineGallery"></div>
+  </div>
+</section>
+
 <section class="values" id="values">
   <div class="wrap">
     <div class="values-head">
@@ -452,8 +489,8 @@
 
 <section class="quote-section">
   <div class="wrap">
-    <blockquote data-i18n="quote.text">"The first honey I've tasted that reminded me a jar can have a season, like wine does."</blockquote>
-    <cite data-i18n="quote.cite">— Marguerite L., third-year subscriber</cite>
+    <blockquote data-i18n="quote.text">"My mother used to buy honey from three different shops just to trust one jar. Now I only trust this one."</blockquote>
+    <cite data-i18n="quote.cite">— Jeevan Bista, regular customer</cite>
   </div>
 </section>
 
@@ -546,6 +583,13 @@
   //   - preorder_note: optional custom text shown on the product card instead
   //     of the default "Pre-order · ships once restocked", e.g. "Ships early
   //     Mangsir". Leave blank to use the default wording.
+  //
+  // "From the ridgelines" gallery (below the story section) is managed the
+  // same way, from a separate "Ridgeline" sheet, columns:
+  //   id | image_url | caption | sort_order | active
+  //   Photos are uploaded directly from admin.html (no URL pasting) — the
+  //   backend saves them to Drive and writes image_url itself, same as it
+  //   already does for jar photos. GET ?action=ridgeline returns this sheet.
   // =========================================================================
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwPrGWm5QVhccvSUttGA4m1pPr9KWGmh8RBl0zoUQDbZD-4CgXyVzwd55KVX7GyCyU4/exec";
 
@@ -738,6 +782,56 @@
     });
   }
 
+  // ---------- RIDGELINE GALLERY ----------
+  // Photos are managed from admin.html (direct upload, no URL pasting needed) and
+  // served the same way products are: GET ?action=ridgeline -> array of
+  // { image_url, caption, sort_order, active } rows from a "Ridgeline" sheet.
+  // Only active rows are shown, sorted by sort_order. If the sheet/backend isn't
+  // reachable or has no active rows, the section quietly shows an empty-state
+  // note instead of a broken gallery.
+  let RIDGELINE_IMAGES = [];
+
+  async function loadRidgelineImages(){
+    if(!endpointConfigured()){ RIDGELINE_IMAGES = []; renderRidgelineGallery(); return; }
+    try{
+      const sep = APPS_SCRIPT_URL.includes('?') ? '&' : '?';
+      const res = await fetch(APPS_SCRIPT_URL + sep + 'action=ridgeline');
+      if(!res.ok) throw new Error('bad status ' + res.status);
+      const data = await res.json();
+      if(!Array.isArray(data)) throw new Error('unexpected response shape');
+      RIDGELINE_IMAGES = data
+        .filter(row => row && (row.active === true || String(row.active).toUpperCase() === 'TRUE'))
+        .map(row => ({
+          image: isValidImageUrl(cleanText(row.image_url, 600)) ? cleanText(row.image_url, 600) : '',
+          caption: cleanText(row.caption, 140),
+          order: Number(row.sort_order) || 0
+        }))
+        .filter(row => row.image)
+        .sort((a,b) => a.order - b.order)
+        .slice(0, 6);
+    } catch(err){
+      console.warn('Could not load ridgeline photos:', err);
+      RIDGELINE_IMAGES = [];
+    }
+    renderRidgelineGallery();
+  }
+
+  function renderRidgelineGallery(){
+    const gallery = document.getElementById('ridgelineGallery');
+    if(!gallery) return;
+    if(RIDGELINE_IMAGES.length === 0){
+      gallery.innerHTML = `<div class="ridgeline-empty">${escapeHtml(t('ridgeline.empty'))}</div>`;
+      return;
+    }
+    gallery.innerHTML = RIDGELINE_IMAGES.map(r => `
+      <div class="ridge-photo">
+        <img src="${escapeHtml(r.image)}" alt="${escapeHtml(r.caption)}" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+             onerror="this.closest('.ridge-photo').remove()">
+        ${r.caption ? `<span class="ridge-caption">${escapeHtml(r.caption)}</span>` : ''}
+      </div>
+    `).join('');
+  }
+
   // ---------- I18N ----------
   let LANG = 'en';
   const I18N = {
@@ -746,7 +840,11 @@
       'hero.title':'Slow gold, <em>honestly</em> kept.',
       'hero.sub':'Raw honey harvested by hand across three ridgelines, cold-extracted and bottled within 48 hours — never blended, never heated past what the hive itself would allow.',
       'hero.cta1':'Shop the harvest', 'hero.cta2':'Our story',
-      'nav.story':'Story','nav.shop':'Shop','nav.craft':'Craft','nav.contact':'Contact','nav.cart':'Cart',
+      'nav.story':'Story','nav.ridgeline':'Ridgelines','nav.shop':'Shop','nav.craft':'Craft','nav.contact':'Contact','nav.cart':'Cart',
+      'ridgeline.eyebrow':'From the ridgelines',
+      'ridgeline.title':'A look at where it comes from',
+      'ridgeline.p1':'Three ridgelines, a short walk apart from each other but each with its own flowers, light, and weather — which is exactly why the honey from one never tastes quite like the honey from another. These are the hives and the hands behind every jar.',
+      'ridgeline.empty':'Photos from the ridgelines are on their way — check back soon.',
       'story.eyebrow':'Honey basics',
       'story.title':'How to actually use it',
       'story.p1':'A tablespoon (about 15g) once or twice a day is the usual starting point — stirred into warm (not boiling) water, spooned over curd or oats, or taken straight off the spoon. Raw honey works well as an everyday sweetener in place of refined sugar, and many people take a spoonful before bed or first thing in the morning.',
@@ -770,8 +868,8 @@
       'products.noneForHarvest':"No jars from this harvest right now — check back soon.",
       'products.preorder':'Pre-order',
       'products.preorderBadge':'Pre-order · ships once restocked',
-      'quote.text':'"The first honey I\'ve tasted that reminded me a jar can have a season, like wine does."',
-      'quote.cite':'— Marguerite L., third-year subscriber',
+      'quote.text':'"My mother used to buy honey from three different shops just to trust one jar. Now I only trust this one."',
+      'quote.cite':'— Jeevan Bista, regular customer',
       'foot.brandp':'Raw, single-origin honey from a small apiary keeping to three ridgelines and its own pace.',
       'foot.shopHead':'Shop','foot.allHoney':'All honey','foot.giftSets':'Gift sets','foot.ourStory':'Our story',
       'foot.supportHead':'Support','foot.shipping':'Shipping','foot.returns':'Returns','foot.contact':'Contact',
@@ -808,7 +906,11 @@
       'hero.title':'बिस्तारै पाकेको सुन, <em>इमानदारीसाथ</em> राखिएको।',
       'hero.sub':'तीन डाँडाबाट हातैले संकलन गरिएको काँचो महमौरी, चिसो प्रविधिले निकालेर ४८ घण्टाभित्रै बोतलमा भरिन्छ — कहिल्यै मिसाइँदैन, मौरीघारको स्वाभाविक तापभन्दा बढी कहिल्यै तताइँदैन।',
       'hero.cta1':'यस सिजनको महमौरी हेर्नुहोस्', 'hero.cta2':'हाम्रो बारेमा',
-      'nav.story':'कथा','nav.shop':'पसल','nav.craft':'शिल्प','nav.contact':'सम्पर्क','nav.cart':'कार्ट',
+      'nav.story':'कथा','nav.ridgeline':'डाँडाहरू','nav.shop':'पसल','nav.craft':'शिल्प','nav.contact':'सम्पर्क','nav.cart':'कार्ट',
+      'ridgeline.eyebrow':'डाँडाहरूबाट',
+      'ridgeline.title':'यो कहाँबाट आउँछ, हेरौं',
+      'ridgeline.p1':'तीन डाँडा, एकअर्कादेखि थोरै टाढा तर हरेकको आफ्नै फूल, धूप र मौसम — त्यसैले एउटा डाँडाको महमौरी अर्को डाँडाको जस्तो कहिल्यै हुँदैन। यिनै हुन् हरेक बोतलपछिका मौरीघार र हातहरू।',
+      'ridgeline.empty':'डाँडाका तस्बिरहरू छिट्टै आउँदैछन् — पछि फेरि हेर्नुहोस्।',
       'story.eyebrow':'महमौरी बारे',
       'story.title':'कति र कसरी खाने',
       'story.p1':'सामान्यतया दिनको एक वा दुई पटक, एक चम्चा (करिब १५ ग्राम) खानु उपयुक्त मानिन्छ — न्यानो (नउमालेको) पानीमा घोलेर, दहीं वा ओटमा हालेर, वा सिधै चम्चाले लिन सकिन्छ। चिनीको सट्टा दैनिक प्रयोगमा महमौरी राख्न सकिन्छ, र धेरैले बिहान उठ्नेबित्तिकै वा राति सुत्नुअघि एक चम्चा लिने गर्छन्।',
@@ -832,8 +934,8 @@
       'products.noneForHarvest':'यो संकलनका बोतल हाल छैनन् — छिट्टै हेर्नुहोस्।',
       'products.preorder':'पूर्व-अर्डर',
       'products.preorderBadge':'पूर्व-अर्डर · पुनःस्टक भएपछि पठाइनेछ',
-      'quote.text':'"मैले चाखेको पहिलो महमौरी जसले सम्झायो — वाइनजस्तै, बोतलको पनि आफ्नै सिजन हुन सक्छ।"',
-      'quote.cite':'— मार्गुराइट एल., तेस्रो वर्षको ग्राहक',
+      'quote.text':'"मेरी आमा एउटा जार विश्वास गर्नलाई तीन-तीन पसलबाट महमौरी किन्नुहुन्थ्यो। अहिले म यही एउटामाथि मात्र भरोसा गर्छु।"',
+      'quote.cite':'— जीवन बिष्ट, नियमित ग्राहक',
       'foot.brandp':'तीन डाँडामा आफ्नै गतिमा चल्ने एउटा सानो मौरीपालनबाट, एउटै स्रोतको काँचो महमौरी।',
       'foot.shopHead':'पसल','foot.allHoney':'सबै महमौरी','foot.giftSets':'उपहार सेट','foot.ourStory':'हाम्रो बारेमा',
       'foot.supportHead':'सहयोग','foot.shipping':'ढुवानी','foot.returns':'फिर्ता','foot.contact':'सम्पर्क',
@@ -881,6 +983,7 @@
     });
     renderHarvestPicker();
     renderProducts();
+    renderRidgelineGallery();
     renderCart();
     renderPhone();
   }
@@ -1301,7 +1404,7 @@
 
   // ---------- SCROLL REVEAL ----------
   function initReveal(){
-    const targets = document.querySelectorAll('.story-grid, .value-card, .product-card');
+    const targets = document.querySelectorAll('.story-grid, .ridgeline-grid, .value-card, .product-card');
     targets.forEach(el=>{ el.style.opacity=0; el.style.transform='translateY(18px)'; el.style.transition='opacity .7s ease, transform .7s ease'; });
     const io = new IntersectionObserver((entries)=>{
       entries.forEach(en=>{
@@ -1390,6 +1493,7 @@
   applyLanguage();
   applyLogoOverride();
   loadProducts();
+  loadRidgelineImages();
   buildHexGrid();
   initReveal();
 </script>
