@@ -180,7 +180,7 @@
   .values{background:var(--espresso-2); color:var(--ivory);}
   .values-head{max-width:640px; margin:0 auto 64px; text-align:center;}
   .values-head h2{font-size:clamp(28px,3.4vw,40px);}
-  .value-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line);}
+  .value-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:1px; background:var(--line);}
   .value-card{background:var(--espresso-2); padding:44px 34px;}
   .value-icon{width:34px; height:34px; margin-bottom:24px;}
   .value-card h3{font-size:19px; font-weight:500; margin-bottom:12px; font-family:'Jost',sans-serif;}
@@ -478,11 +478,6 @@
         <h3 data-i18n="values.v2title">One apiary per jar</h3>
         <p data-i18n="values.v2p">Every batch is traceable to a single ridge and harvest week — no blending between sites or seasons.</p>
       </div>
-      <div class="value-card">
-        <svg class="value-icon" viewBox="0 0 34 34" fill="none"><rect x="9" y="6" width="16" height="24" rx="1" stroke="#E8B94E" stroke-width="1.4"/><path d="M9 14h16" stroke="#E8B94E" stroke-width="1.4"/></svg>
-        <h3 data-i18n="values.v3title">Hand-labeled, numbered</h3>
-        <p data-i18n="values.v3p">Each label is written by hand and numbered against our harvest log — you can ask us exactly which week yours came from.</p>
-      </div>
     </div>
   </div>
 </section>
@@ -512,7 +507,6 @@
     <div class="foot-col">
       <h4 data-i18n="foot.supportHead">Support</h4>
       <a href="#" data-i18n="foot.shipping">Shipping</a>
-      <a href="#" data-i18n="foot.returns">Returns</a>
       <a href="mailto:www.ghareluhoney@gmail.com">www.ghareluhoney@gmail.com</a>
       <p class="foot-phone" id="footPhone">Phone: coming soon</p>
     </div>
@@ -554,66 +548,16 @@
 <script>
   'use strict';
 
-  // =========================================================================
-  // CONFIG
-  // Paste your deployed Google Apps Script Web App URL here (see SETUP.md /
-  // the accompanying apps-script-backend.gs file). The same URL is used for:
-  //   GET  ?action=products   -> live product list from your "Products" sheet
-  //   POST { type: 'order' | 'newsletter', ... }
-  //
-  // Products sheet columns (header row):
-  //   id | name | tag | description | price | qty | jar | image_url | harvest_month | active | preorder | preorder_note
-  //   - Just write everything in English — name, tag, description. The site's
-  //     menus/buttons still switch to Nepali with the EN/NP toggle, but your
-  //     product text stays as you typed it either way. No separate _np columns.
-  //   - image_url: a public https link (Drive "anyone with link" share, Imgur,
-  //     etc.) Leave blank to fall back to the built-in jar illustration.
-  //   - qty: whole-number stock count. Leave blank for "always in stock" (no limit
-  //     shown). At 0 the item shows "Sold out" and can't be added to the cart —
-  //     unless preorder (below) is TRUE.
-  //   - harvest_month: which harvest round this jar came from, e.g. "Chaitra"
-  //     "Baisakh", "Asar", "Kartik" — or plain English months. Type whatever
-  //     label you want; the site builds the picker pills from whatever values
-  //     it finds, so no code changes are needed when a new harvest starts.
-  //   - preorder: set to TRUE to let customers keep ordering a jar after qty
-  //     hits 0. When TRUE and qty is 0, the card shows a "Pre-order" button
-  //     instead of "Sold out", and the cart/checkout/confirmation screens all
-  //     flag that item as a pre-order so you know to fulfill it once restocked.
-  //     Leave blank/FALSE for normal sold-out behavior.
-  //   - preorder_note: optional custom text shown on the product card instead
-  //     of the default "Pre-order · ships once restocked", e.g. "Ships early
-  //     Mangsir". Leave blank to use the default wording.
-  //
-  // "From the ridgelines" gallery (below the story section) is managed the
-  // same way, from a separate "Ridgeline" sheet, columns:
-  //   id | image_url | caption | sort_order | active
-  //   Photos are uploaded directly from admin.html (no URL pasting) — the
-  //   backend saves them to Drive and writes image_url itself, same as it
-  //   already does for jar photos. GET ?action=ridgeline returns this sheet.
-  // =========================================================================
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwPrGWm5QVhccvSUttGA4m1pPr9KWGmh8RBl0zoUQDbZD-4CgXyVzwd55KVX7GyCyU4/exec";
 
-  // Optional: point the header/footer logo at a hosted image URL instead of the
-  // bundled assets/gharelu-mark-dark-bg.png file (e.g. a Google Drive share link,
-  // same as product photos). Leave blank to keep using the local file.
   const LOGO_IMAGE_URL = "https://raw.githubusercontent.com/ghareluhoney/Gharelu/main/gharelu-mark-dark-bg.png";
 
-  // Add your phone number here whenever it's ready, e.g. "+977 98XXXXXXXX" —
-  // the footer shows a "Phone: coming soon" placeholder until this is filled in.
-  const PHONE_NUMBER = "";
+  const PHONE_NUMBER = "9714073744";
 
-  // Flat delivery charge for addresses inside Kathmandu Valley (NPR). Shown in
-  // the cart drawer and checkout, and added on top of the item subtotal.
   const DELIVERY_CHARGE_INSIDE_VALLEY = 149;
 
-  // Maximum quantity a shopper can add of a single pre-order (sold-out but
-  // preorder-enabled) item, since there's no real stock count to cap it by.
   const PREORDER_QTY_CAP = 10;
 
-  // ---------- SECURITY HELPERS ----------
-  // Escape any text before it goes into innerHTML — product names/tags now come
-  // from a Google Sheet you (or anyone with edit access) can change, so treat
-  // that content as untrusted input, not just your own hardcoded copy.
   function escapeHtml(str){
     if(str === undefined || str === null) return '';
     return String(str).replace(/[&<>"']/g, ch => ({
@@ -624,22 +568,16 @@
     return typeof email === 'string' && email.length <= 254 &&
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
-  // Only accept plain https:// image URLs from the sheet — this blocks javascript:
-  // and data: URIs (a classic way to sneak a script into an "image" field), and
-  // images are always rendered as a real <img src="..."> attribute, never as HTML.
   function isValidImageUrl(url){
     if(typeof url !== 'string' || url.length === 0 || url.length > 600) return false;
     return /^https:\/\/[^\s<>"']+$/i.test(url.trim());
   }
-  // Clamps + trims free-text before it's ever sent anywhere.
   function cleanText(val, maxLen){
     return String(val || '').trim().slice(0, maxLen || 200);
   }
-  // Displays a price in Nepali Rupees, e.g. 1277 -> "Rs. 1,277".
   function formatPrice(amount){
     return 'Rs. ' + Math.round(Number(amount) || 0).toLocaleString('en-IN');
   }
-  // TRUE-ish helper for values that arrive from Sheets as boolean or string.
   function isTruthyFlag(val){
     return val === true || String(val).trim().toUpperCase() === 'TRUE';
   }
@@ -650,32 +588,21 @@
 
   function sendToSheet(payload){
     if(!endpointConfigured()) return Promise.reject(new Error('Backend not configured'));
-    // Sent as text/plain to avoid a CORS preflight, which Apps Script Web Apps don't handle.
     return fetch(APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     }).then(res => {
       if(!res.ok) throw new Error('Request failed: ' + res.status);
-      return res.json().catch(() => ({ status: 'ok' })); // tolerate a non-JSON OK response
+      return res.json().catch(() => ({ status: 'ok' }));
     });
   }
 
-  // =========================================================================
-  // PRODUCTS — loaded live from your Google Sheet, with a safe fallback
-  // =========================================================================
-  // Expected sheet columns (header row): id | name | tag | price | jar | active
-  // "jar" should be one of: wildflower, comb, lavender, set (anything else falls back to a default jar icon).
-  // Only rows where active is TRUE are shown.
   const ALLOWED_JARS = ['wildflower','comb','lavender','set'];
 
-  // No demo fallback products — if the sheet can't be reached, the site shows
-  // an honest "couldn't load" message (see renderProducts) rather than fake items.
   const DEFAULT_PRODUCTS = [];
 
   let PRODUCTS = DEFAULT_PRODUCTS;
-  // 'all' shows everything; otherwise this holds one of the harvest_month
-  // values pulled live from the sheet (see renderHarvestPicker).
   let activeHarvest = 'all';
 
   async function loadProducts(){
@@ -698,7 +625,6 @@
         .map(row => {
           const jar = ALLOWED_JARS.includes(row.jar) ? row.jar : 'wildflower';
           const priceNum = Number(row.price);
-          // blank/missing qty = unlimited stock (null); otherwise a whole, non-negative count
           const qtyRaw = row.qty;
           let qty = null;
           if(qtyRaw !== undefined && qtyRaw !== null && String(qtyRaw).trim() !== ''){
@@ -729,7 +655,7 @@
             preorderNote: cleanText(row.preorder_note, 200)
           };
         })
-        .slice(0, 40); // sanity cap
+        .slice(0, 40);
 
       if(mapped.length === 0) throw new Error('no active products in sheet');
       PRODUCTS = mapped;
@@ -752,10 +678,6 @@
     `).join('');
   }
 
-  // ---------- HARVEST PICKER ----------
-  // Builds the "which harvest?" pills from whatever harvest_month values are
-  // actually present on active products — add/rename a harvest in the sheet
-  // and the picker updates itself, no code changes needed.
   function renderHarvestPicker(){
     const wrap = document.getElementById('harvestPicker');
     if(!wrap) return;
@@ -782,13 +704,6 @@
     });
   }
 
-  // ---------- RIDGELINE GALLERY ----------
-  // Photos are managed from admin.html (direct upload, no URL pasting needed) and
-  // served the same way products are: GET ?action=ridgeline -> array of
-  // { image_url, caption, sort_order, active } rows from a "Ridgeline" sheet.
-  // Only active rows are shown, sorted by sort_order. If the sheet/backend isn't
-  // reachable or has no active rows, the section quietly shows an empty-state
-  // note instead of a broken gallery.
   let RIDGELINE_IMAGES = [];
 
   async function loadRidgelineImages(){
@@ -832,7 +747,6 @@
     `).join('');
   }
 
-  // ---------- I18N ----------
   let LANG = 'en';
   const I18N = {
     en: {
@@ -855,8 +769,6 @@
       'values.v1p':'Never heated above hive temperature, so the pollen, enzymes, and aroma stay exactly as the bees left them.',
       'values.v2title':'One apiary per jar',
       'values.v2p':'Every batch is traceable to a single ridge and harvest week — no blending between sites or seasons.',
-      'values.v3title':'Hand-labeled, numbered',
-      'values.v3p':'Each label is written by hand and numbered against our harvest log — you can ask us exactly which week yours came from.',
       'products.title':'The current harvest',
       'products.sub':'Four honeys, poured this season. Quantities are limited to what the hives actually gave us.',
       'products.addToCart':'Add to cart', 'products.added':'Added',
@@ -872,7 +784,7 @@
       'quote.cite':'— Jeevan Bista, regular customer',
       'foot.brandp':'Raw, single-origin honey from a small apiary keeping to three ridgelines and its own pace.',
       'foot.shopHead':'Shop','foot.allHoney':'All honey','foot.giftSets':'Gift sets','foot.ourStory':'Our story',
-      'foot.supportHead':'Support','foot.shipping':'Shipping','foot.returns':'Returns','foot.contact':'Contact',
+      'foot.supportHead':'Support','foot.shipping':'Shipping','foot.contact':'Contact',
       'foot.loopHead':'Stay in the loop','foot.loopP':'Hear about new harvests before they sell out.',
       'foot.emailPlaceholder':'Your email','foot.join':'Join','foot.joined':'Joined','foot.joining':'Joining…',
       'foot.copyright':'© 2026 Gharelu Honey Co.',
@@ -888,11 +800,13 @@
       'checkout.title':'Checkout','checkout.items':'item','checkout.itemsPlural':'items',
       'checkout.name':'Full name','checkout.namePh':'Jamie Ellery',
       'checkout.email':'Email','checkout.emailPh':'jamie@email.com',
+      'checkout.phone':'Phone number','checkout.phonePh':'98XXXXXXXX',
       'checkout.address':'Shipping address','checkout.addressPh':'14 Ridgeline Road',
       'checkout.city':'City','checkout.cityPh':'City',
       'checkout.postal':'Postal code','checkout.postalPh':'00000',
       'checkout.placeOrder':'Place order —','checkout.placing':'Placing order…',
       'checkout.invalidEmail':'Please enter a valid email address.',
+      'checkout.invalidPhone':'Please enter a valid phone number.',
       'checkout.orderError':"We couldn't place your order — please check your connection and try again.",
       'checkout.preorderNote':'This order includes pre-order item(s), which will ship once restocked — everything else ships as usual.',
       'confirm.title':'Order placed',
@@ -916,13 +830,11 @@
       'story.p1':'सामान्यतया दिनको एक वा दुई पटक, एक चम्चा (करिब १५ ग्राम) खानु उपयुक्त मानिन्छ — न्यानो (नउमालेको) पानीमा घोलेर, दहीं वा ओटमा हालेर, वा सिधै चम्चाले लिन सकिन्छ। चिनीको सट्टा दैनिक प्रयोगमा महमौरी राख्न सकिन्छ, र धेरैले बिहान उठ्नेबित्तिकै वा राति सुत्नुअघि एक चम्चा लिने गर्छन्।',
       'story.p2':'घाँटी खर्खराएमा एक चम्चा सिधै वा न्यानो पानी र कागतीसँग मिसाएर खाने चलन छ। उमालेको वा एकदमै तातो पानीमा नहाल्नुहोस् — धेरै तापले महमौरीका प्राकृतिक इन्जाइम नष्ट गर्छ। एक वर्षमुनिका बालबालिकालाई नदिनुहोस्, र मधुमेह भएमा वा औषधि सेवन गर्दै हुनुहुन्छ भने दैनिक बानी बसाल्नुअघि डाक्टरसँग सल्लाह लिनु उचित हुन्छ।',
       'values.eyebrow':'यसरी राखिन्छ',
-      'values.title':'तीन नियम, जे कहिल्यै मिचिँदैन',
+      'values.title':'दुई नियम, जे कहिल्यै मिचिँदैन',
       'values.v1title':'सधैं चिसो प्रविधिले निकालिएको',
       'values.v1p':'मौरीघारको स्वाभाविक तापभन्दा बढी कहिल्यै तताइँदैन, त्यसैले परागकण, इन्जाइम र सुगन्ध मौरीले छोडेजस्तै रहन्छ।',
       'values.v2title':'हरेक बोतल एउटै मौरीघारको',
       'values.v2p':'हरेक ब्याच एउटै डाँडा र संकलन सातासँग जोडिएको हुन्छ — ठाउँ वा सिजनहरूबीच कुनै मिसावट हुँदैन।',
-      'values.v3title':'हातैले लेबल, नम्बर सहित',
-      'values.v3p':'हरेक लेबल हातैले लेखिन्छ र हाम्रो संकलन लगमा नम्बर मिलाइन्छ — तपाईंको बोतल कुन साताको हो भनेर हामीलाई सोध्न सक्नुहुन्छ।',
       'products.title':'यस सिजनको संकलन',
       'products.sub':'यस सिजनमा भरिएका चार किसिमका महमौरी। मौरीघारले जति दियो, त्यति मात्र उपलब्ध छ।',
       'products.addToCart':'कार्टमा थप्नुहोस्', 'products.added':'थपियो',
@@ -938,7 +850,7 @@
       'quote.cite':'— जीवन बिष्ट, नियमित ग्राहक',
       'foot.brandp':'तीन डाँडामा आफ्नै गतिमा चल्ने एउटा सानो मौरीपालनबाट, एउटै स्रोतको काँचो महमौरी।',
       'foot.shopHead':'पसल','foot.allHoney':'सबै महमौरी','foot.giftSets':'उपहार सेट','foot.ourStory':'हाम्रो बारेमा',
-      'foot.supportHead':'सहयोग','foot.shipping':'ढुवानी','foot.returns':'फिर्ता','foot.contact':'सम्पर्क',
+      'foot.supportHead':'सहयोग','foot.shipping':'ढुवानी','foot.contact':'सम्पर्क',
       'foot.loopHead':'जानकारीमा रहनुहोस्','foot.loopP':'नयाँ संकलन सकिनुअघि खबर पाउनुहोस्।',
       'foot.emailPlaceholder':'तपाईंको इमेल','foot.join':'सामेल हुनुहोस्','foot.joined':'सामेल भयो','foot.joining':'सामेल गर्दै…',
       'foot.copyright':'© २०२६ घरेलु महमौरी कं.',
@@ -954,11 +866,13 @@
       'checkout.title':'चेकआउट','checkout.items':'वस्तु','checkout.itemsPlural':'वस्तुहरू',
       'checkout.name':'पूरा नाम','checkout.namePh':'जेमी एलेरी',
       'checkout.email':'इमेल','checkout.emailPh':'jamie@email.com',
+      'checkout.phone':'फोन नम्बर','checkout.phonePh':'९८XXXXXXXX',
       'checkout.address':'ढुवानी ठेगाना','checkout.addressPh':'१४ रिजलाइन रोड',
       'checkout.city':'शहर','checkout.cityPh':'शहर',
       'checkout.postal':'हुलाक कोड','checkout.postalPh':'००००',
       'checkout.placeOrder':'अर्डर गर्नुहोस् —','checkout.placing':'अर्डर गर्दै…',
       'checkout.invalidEmail':'कृपया मान्य इमेल ठेगाना हाल्नुहोस्।',
+      'checkout.invalidPhone':'कृपया मान्य फोन नम्बर हाल्नुहोस्।',
       'checkout.orderError':'अर्डर राख्न सकिएन — कृपया आफ्नो जडान जाँचेर फेरि प्रयास गर्नुहोस्।',
       'checkout.preorderNote':'यस अर्डरमा पूर्व-अर्डर वस्तु समावेश छ, जुन पुनःस्टक भएपछि पठाइनेछ — बाँकी वस्तु सामान्य रूपमै पठाइनेछ।',
       'confirm.title':'अर्डर राखियो',
@@ -1022,17 +936,12 @@
     return base + body + (kind==='set' ? '' : lid) + `</svg>`;
   }
 
-  // Renders a sheet-supplied photo when there is one (validated https URL only),
-  // otherwise the built-in jar illustration. data-jar carries the fallback shape
-  // so a broken image link can swap itself out after load.
   function productVisual(p){
     if(p.image){
       return `<img class="product-photo" src="${escapeHtml(p.image)}" alt="${escapeHtml(p.name[LANG] || p.name.en)}" data-jar="${escapeHtml(p.jar)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
     }
     return jarSVG(p.jar);
   }
-  // If a pasted image URL is dead/blocked, swap back to the jar illustration
-  // instead of leaving a broken-image icon on a live storefront.
   function attachImageFallbacks(container){
     container.querySelectorAll('img.product-photo').forEach(img=>{
       img.addEventListener('error', ()=>{
@@ -1042,24 +951,15 @@
     });
   }
 
-  // ---------- STOCK / PRE-ORDER HELPERS ----------
-  // A product is "out of stock" once its counted qty hits 0 (unlimited-stock
-  // items, where qty is null, are never out of stock).
   function isOutOfStock(p){
     return !!p && p.qty !== null && p.qty !== undefined && p.qty <= 0;
   }
-  // Pre-orderable means out of stock but the sheet explicitly allows continuing
-  // to take orders for it (row.preorder === TRUE).
   function isPreorderable(p){
     return isOutOfStock(p) && !!p.preorder;
   }
-  // Truly unavailable: out of stock and not pre-order enabled.
   function isTrulySoldOut(p){
     return isOutOfStock(p) && !p.preorder;
   }
-  // How many of this item a shopper may hold in their cart: unlimited-stock
-  // items have no cap, pre-order items are capped at PREORDER_QTY_CAP (there's
-  // no real stock number to go by), everything else is capped at its qty.
   function stockLimit(p){
     if(!p) return 0;
     if(p.qty === null || p.qty === undefined) return Infinity;
@@ -1067,8 +967,7 @@
     return p.qty;
   }
 
-  // ---------- STATE ----------
-  let cart = {}; // id -> qty
+  let cart = {};
 
   function renderProducts(){
     const grid = document.getElementById('productGrid');
@@ -1128,10 +1027,10 @@
 
   function addToCart(id){
     const p = PRODUCTS.find(p => p.id === id);
-    if(!p) return false; // ignore unknown ids
+    if(!p) return false;
     const max = stockLimit(p);
     const current = cart[id] || 0;
-    if(current >= max) return false; // already at (or beyond) available stock
+    if(current >= max) return false;
     cart[id] = current + 1;
     renderCart();
     openDrawer();
@@ -1162,9 +1061,6 @@
   function cartGrandTotal(){
     return cartTotal() + DELIVERY_CHARGE_INSIDE_VALLEY;
   }
-  // Whether the current cart holds at least one pre-order (out-of-stock but
-  // preorder-enabled) item — used to surface a note in the drawer, checkout,
-  // and confirmation screen.
   function cartHasPreorder(){
     return Object.keys(cart).some(id=>{
       const p = PRODUCTS.find(p=>p.id===id);
@@ -1179,7 +1075,7 @@
     const items = Object.entries(cart).filter(([id]) => PRODUCTS.some(p => p.id === id));
 
     if(items.length === 0){
-      body.innerHTML = `<div class="empty-cart">${t('cart.empty')}</div>`; // static i18n copy only, not user input
+      body.innerHTML = `<div class="empty-cart">${t('cart.empty')}</div>`;
       foot.innerHTML = '';
       return;
     }
@@ -1226,7 +1122,6 @@
     if(checkoutBtn) checkoutBtn.addEventListener('click', openCheckout);
   }
 
-  // ---------- DRAWER ----------
   const overlay = document.getElementById('overlay');
   const drawer = document.getElementById('drawer');
   function openDrawer(){ overlay.classList.add('open'); drawer.classList.add('open'); }
@@ -1238,9 +1133,14 @@
     if(e.key === 'Escape'){ closeDrawer(); closeCheckout(); }
   });
 
-  // ---------- CHECKOUT MODAL ----------
   const modalOverlay = document.getElementById('modalOverlay');
   const modalContent = document.getElementById('modalContent');
+
+  function isValidPhone(phone){
+    if(typeof phone !== 'string') return false;
+    const digits = phone.replace(/[^\d]/g, '');
+    return digits.length >= 7 && digits.length <= 15;
+  }
 
   function openCheckout(){
     closeDrawer();
@@ -1260,6 +1160,8 @@
         <div class="field"><label>${escapeHtml(t('checkout.name'))}</label><input required maxlength="100" name="name" placeholder="${escapeHtml(t('checkout.namePh'))}"></div>
         <div class="field"><label>${escapeHtml(t('checkout.email'))}</label><input required type="email" maxlength="254" name="email" placeholder="${escapeHtml(t('checkout.emailPh'))}"></div>
         <p class="form-error" id="emailError">${escapeHtml(t('checkout.invalidEmail'))}</p>
+        <div class="field"><label>${escapeHtml(t('checkout.phone'))}</label><input required type="tel" maxlength="20" name="phone" placeholder="${escapeHtml(t('checkout.phonePh'))}"></div>
+        <p class="form-error" id="phoneError">${escapeHtml(t('checkout.invalidPhone'))}</p>
         <div class="field"><label>${escapeHtml(t('checkout.address'))}</label><input required maxlength="200" name="address" placeholder="${escapeHtml(t('checkout.addressPh'))}"></div>
         <div class="field-row">
           <div class="field"><label>${escapeHtml(t('checkout.city'))}</label><input required maxlength="100" name="city" placeholder="${escapeHtml(t('checkout.cityPh'))}"></div>
@@ -1278,14 +1180,16 @@
       e.preventDefault();
       const banner = document.getElementById('checkoutBanner');
       const emailError = document.getElementById('emailError');
+      const phoneError = document.getElementById('phoneError');
       banner.style.display = 'none';
       emailError.classList.remove('show');
+      phoneError.classList.remove('show');
 
-      // honeypot check — if a bot filled the hidden field, quietly drop the request
       if(form.hp_field.value){ return; }
 
       const name = cleanText(form.name.value, 100);
       const email = cleanText(form.email.value, 254);
+      const phone = cleanText(form.phone.value, 20);
       const address = cleanText(form.address.value, 200);
       const city = cleanText(form.city.value, 100);
       const postal = cleanText(form.postal.value, 20);
@@ -1293,6 +1197,11 @@
       if(!isValidEmail(email)){
         emailError.classList.add('show');
         form.email.focus();
+        return;
+      }
+      if(!isValidPhone(phone)){
+        phoneError.classList.add('show');
+        form.phone.focus();
         return;
       }
       if(!name || !address || !city || !postal){
@@ -1308,7 +1217,6 @@
           const preorderTag = isPreorderable(p) ? ' [PRE-ORDER]' : '';
           return `${p.name.en} x${qty}${preorderTag}`;
         }).join(', ');
-      // structured id/qty pairs so the backend can validate stock & flag pre-orders server-side
       const itemsDetailed = validCartEntries.map(([id,qty]) => {
         const p = PRODUCTS.find(p=>p.id===id);
         return {
@@ -1324,11 +1232,9 @@
       submitBtn.disabled = true;
 
       try{
-        // The server generates and returns the unique order number (e.g. G00001NP) —
-        // nothing order-number-related is sent from the browser.
         const result = await sendToSheet({
           type: 'order',
-          name, email, address, city, postal,
+          name, email, phone, address, city, postal,
           items: itemsSummary,
           itemsData: JSON.stringify(itemsDetailed),
           hasPreorder: orderHasPreorder,
@@ -1371,11 +1277,10 @@
 
   function closeCheckout(){ modalOverlay.classList.remove('open'); }
 
-  // ---------- HEX SIGNATURE GRID ----------
   function buildHexGrid(){
     const stage = document.getElementById('hexStage');
     const w = 420, h = 440, r = 42;
-    const hw = Math.sqrt(3)*r; // hex width (pointy-top)
+    const hw = Math.sqrt(3)*r;
     const vStep = r*1.5;
     const cols = 5, rows = 6;
     const colors = ['#E8B94E','#D89A3E','#B9762A','#F0D9A0','#C9852F'];
@@ -1402,7 +1307,6 @@
     stage.innerHTML = `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${hexes.join('')}</svg>`;
   }
 
-  // ---------- SCROLL REVEAL ----------
   function initReveal(){
     const targets = document.querySelectorAll('.story-grid, .ridgeline-grid, .value-card, .product-card');
     targets.forEach(el=>{ el.style.opacity=0; el.style.transform='translateY(18px)'; el.style.transition='opacity .7s ease, transform .7s ease'; });
@@ -1418,7 +1322,6 @@
     targets.forEach(el=>io.observe(el));
   }
 
-  // ---------- NEWSLETTER ----------
   const newsletterForm = document.getElementById('newsletterForm');
   newsletterForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
@@ -1428,7 +1331,6 @@
     msg.textContent = '';
     msg.className = 'foot-msg';
 
-    // honeypot check
     if(newsletterForm.hp_field.value){ return; }
 
     const email = cleanText(emailInput.value, 254);
@@ -1462,15 +1364,13 @@
   });
 
   function applyLogoOverride(){
-    if(!LOGO_IMAGE_URL) return; // keep the bundled local file
+    if(!LOGO_IMAGE_URL) return;
     if(!isValidImageUrl(LOGO_IMAGE_URL)){
       console.warn('LOGO_IMAGE_URL must be a plain https:// link — ignoring it.');
       return;
     }
     document.querySelectorAll('.logo .mark').forEach(img=>{
       img.src = LOGO_IMAGE_URL;
-      // if the hosted logo fails to load, fall back to the bundled file rather
-      // than showing a broken image in the header.
       img.addEventListener('error', ()=>{ img.src = 'assets/gharelu-mark-dark-bg.png'; }, { once:true });
     });
   }
@@ -1489,7 +1389,6 @@
     }
   }
 
-  // ---------- INIT ----------
   applyLanguage();
   applyLogoOverride();
   loadProducts();
