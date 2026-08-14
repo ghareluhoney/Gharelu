@@ -166,6 +166,10 @@
   .status-badge.inactive{background:rgba(168,64,47,0.14); color:var(--rust);}
   .card-body{padding:14px 16px 16px; display:flex; flex-direction:column; gap:8px; flex:1;}
   .card-body h3{font-size:16px; line-height:1.25;}
+  .card-sku{
+    font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--wax);
+    letter-spacing:.04em; margin-top:-4px;
+  }
   .card-tag{font-size:12px; color:var(--wax); line-height:1.4; min-height:0;}
   .card-meta-row{display:flex; align-items:center; justify-content:space-between; margin-top:auto; padding-top:6px;}
   .price{font-family:'IBM Plex Mono', monospace; font-size:15px; font-weight:500;}
@@ -236,6 +240,10 @@
   }
   .file-btn:hover{background:var(--paper-3);}
   .hint{font-size:11.5px; color:var(--wax); margin-top:4px;}
+  .sku-readout{
+    grid-column:1/-1; font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--wax);
+    background:var(--paper-2); border:1px solid var(--line); border-radius:8px; padding:9px 12px;
+  }
   .toast{
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
     background:var(--ink); color:var(--paper); padding:11px 20px; border-radius:9px;
@@ -293,7 +301,7 @@
   <main>
     <div class="toolbar">
       <div class="search-wrap">
-        <input type="text" id="search-input" placeholder="Search jars by name or harvest…" />
+        <input type="text" id="search-input" placeholder="Search jars by name, SKU, or harvest…" />
       </div>
       <div class="toolbar-actions">
         <span class="count-pill" id="count-pill"></span>
@@ -327,6 +335,8 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="f-id" />
+
+      <div class="sku-readout" id="sku-readout" style="display:none;">SKU: <span id="sku-readout-value"></span></div>
 
       <div class="img-upload">
         <div class="img-preview" id="img-preview"><span class="hex"></span></div>
@@ -550,6 +560,7 @@ function renderGrid() {
   const filtered = products.filter(p => {
     if (!q) return true;
     return (String(p.name||'').toLowerCase().includes(q) ||
+            String(p.sku||'').toLowerCase().includes(q) ||
             String(p.harvest_month||'').toLowerCase().includes(q) ||
             String(p.tag||'').toLowerCase().includes(q));
   });
@@ -597,6 +608,7 @@ function cardHtml(p) {
       '</div>' +
       '<div class="card-body">' +
         '<h3>' + escapeHtml(p.name || 'Untitled') + '</h3>' +
+        (p.sku ? '<div class="card-sku">SKU: ' + escapeHtml(p.sku) + '</div>' : '') +
         (p.tag ? '<div class="card-tag">' + escapeHtml(p.tag) + '</div>' : '') +
         '<div class="card-meta-row">' +
           '<span class="price">' + formatPrice(p.price) + '</span>' +
@@ -656,6 +668,18 @@ function openModal(p) {
   $('f-description').value = p ? (p.description || '') : '';
   $('f-active').checked = p ? (p.active === true || String(p.active).toUpperCase() === 'TRUE') : true;
 
+  const skuReadout = $('sku-readout');
+  if (p && p.sku) {
+    $('sku-readout-value').textContent = p.sku;
+    skuReadout.style.display = 'block';
+  } else if (p) {
+    $('sku-readout-value').textContent = '(will be assigned on save)';
+    skuReadout.style.display = 'block';
+  } else {
+    $('sku-readout-value').textContent = '(assigned automatically once you save)';
+    skuReadout.style.display = 'block';
+  }
+
   const preview = $('img-preview');
   preview.innerHTML = (p && p.image_url) ? '<img src="' + escapeAttr(p.image_url) + '" alt="">' : '<span class="hex"></span>';
 
@@ -711,7 +735,7 @@ async function saveProduct() {
   try {
     const data = await callBackend(payload);
     if (data.status !== 'ok') { showToast(data.message || 'Could not save.', true); return; }
-    showToast(editingId ? 'Jar updated.' : 'Jar added.');
+    showToast(editingId ? 'Jar updated.' : ('Jar added — SKU ' + (data.sku || '') + '.'));
     closeModal();
     loadProducts();
   } catch (err) {
