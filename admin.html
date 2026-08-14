@@ -302,6 +302,19 @@
     </div>
 
     <div id="product-grid"></div>
+
+    <div class="toolbar" style="margin-top:52px; border-top:1px solid var(--line); padding-top:32px;">
+      <div>
+        <h2 style="font-size:20px;">From the ridgelines</h2>
+        <p style="font-size:12.5px; color:var(--wax); margin-top:4px; max-width:44ch;">Photos shown in the storefront's "From the ridgelines" section. Upload straight from your phone or computer — no image links to paste.</p>
+      </div>
+      <div class="toolbar-actions">
+        <span class="count-pill" id="ridge-count-pill"></span>
+        <button class="btn btn-primary" id="ridge-add-btn">+ Add photo</button>
+      </div>
+    </div>
+
+    <div id="ridge-grid"></div>
   </main>
 </div>
 
@@ -380,6 +393,51 @@
   </div>
 </div>
 
+<!-- ============== RIDGELINE PHOTO MODAL ============== -->
+<div class="modal-backdrop" id="ridge-modal-backdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="ridge-modal-title">Add a ridgeline photo</h2>
+      <button class="modal-close" id="ridge-modal-close">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="rf-id" />
+
+      <div class="img-upload">
+        <div class="img-preview" id="ridge-img-preview"><span class="hex"></span></div>
+        <div>
+          <label class="file-btn" for="rf-image">Choose photo</label>
+          <input type="file" id="rf-image" accept="image/*" style="display:none" />
+          <p class="hint">Upload directly from this device. Leave empty while editing to keep the current photo.</p>
+        </div>
+      </div>
+
+      <div class="field full">
+        <label for="rf-caption">Caption (optional)</label>
+        <input type="text" id="rf-caption" placeholder="e.g. Chitwan ridge, early morning" />
+      </div>
+
+      <div class="field">
+        <label for="rf-order">Display order</label>
+        <input type="number" id="rf-order" step="1" min="0" placeholder="0" />
+      </div>
+
+      <div class="field full" style="display:flex; align-items:center; gap:10px;">
+        <label class="switch" style="margin:0;">
+          <input type="checkbox" id="rf-active" checked />
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label" style="text-transform:none; font-size:13px;">Visible on the storefront</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" id="ridge-delete-btn" style="display:none;">Delete photo</button>
+      <button class="btn btn-ghost" id="ridge-cancel-btn">Cancel</button>
+      <button class="btn btn-primary" id="ridge-save-btn"><span id="ridge-save-btn-text">Save photo</span></button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -447,6 +505,7 @@ async function doLogin() {
       $('login-screen').style.display = 'none';
       $('dashboard-screen').style.display = 'block';
       loadProducts();
+      loadRidgeItems();
     } else {
       msg.textContent = data.message || 'Incorrect password.';
       msg.className = 'msg error';
@@ -463,6 +522,7 @@ async function doLogin() {
 $('signout-btn').addEventListener('click', () => {
   password = null;
   products = [];
+  ridgeItems = [];
   $('login-password').value = '';
   $('login-msg').textContent = '';
   $('dashboard-screen').style.display = 'none';
@@ -671,6 +731,177 @@ $('delete-btn').addEventListener('click', async () => {
     showToast('Jar deleted.');
     closeModal();
     loadProducts();
+  } catch (err) {
+    showToast(err.message || 'Could not reach the server.', true);
+  }
+});
+
+/* ---------------- ridgeline photos ----------------
+   "From the ridgelines" gallery on the storefront. Photos are always uploaded
+   directly from this device (same base64 upload the jar photos use) — there's
+   no URL field, so nothing to paste. */
+let ridgeItems = [];       // cache of the last admin_list_ridgeline response
+let editingRidgeId = null; // null while adding a new photo
+let pendingRidgeImageData = null;
+let pendingRidgeImageMime = null;
+
+async function loadRidgeItems() {
+  $('ridge-grid').innerHTML = '<div class="empty-state"><span class="hex"></span>Loading photos…</div>';
+  try {
+    const data = await callBackend({ type: 'admin_list_ridgeline', password });
+    if (data.status !== 'ok') { showToast(data.message || 'Could not load ridgeline photos.', true); return; }
+    ridgeItems = data.items || [];
+    renderRidgeGrid();
+  } catch (err) {
+    showToast(err.message || 'Could not reach the server.', true);
+    $('ridge-grid').innerHTML = '<div class="empty-state">Could not load photos.</div>';
+  }
+}
+
+function renderRidgeGrid() {
+  $('ridge-count-pill').textContent = ridgeItems.length + (ridgeItems.length === 1 ? ' photo' : ' photos');
+  const grid = $('ridge-grid');
+  if (ridgeItems.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><span class="hex"></span>No ridgeline photos yet. Add one to get started.</div>';
+    return;
+  }
+  const sorted = ridgeItems.slice().sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+  grid.innerHTML = sorted.map(ridgeCardHtml).join('');
+  sorted.forEach(r => {
+    $('ridge-edit-' + r.id)?.addEventListener('click', () => openRidgeModal(r));
+    $('ridge-toggle-' + r.id)?.addEventListener('change', (e) => quickToggleRidgeActive(r, e.target.checked));
+  });
+}
+
+function ridgeCardHtml(r) {
+  const active = r.active === true || String(r.active).toUpperCase() === 'TRUE';
+  const img = r.image_url ? '<img src="' + escapeAttr(r.image_url) + '" alt="" loading="lazy">' : '<span class="hex placeholder-hex"></span>';
+  return (
+    '<div class="card' + (active ? '' : ' inactive') + '">' +
+      '<div class="card-media">' +
+        img +
+        '<span class="status-badge ' + (active ? 'active' : 'inactive') + '">' + (active ? 'Live' : 'Hidden') + '</span>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<h3>' + escapeHtml(r.caption || 'Untitled photo') + '</h3>' +
+        '<div class="card-tag">Order: ' + (Number(r.sort_order) || 0) + '</div>' +
+      '</div>' +
+      '<div class="toggle-row">' +
+        '<span class="toggle-label">Visible</span>' +
+        '<label class="switch"><input type="checkbox" id="ridge-toggle-' + r.id + '" ' + (active ? 'checked' : '') + '><span class="slider"></span></label>' +
+      '</div>' +
+      '<div class="card-actions">' +
+        '<button class="btn btn-ghost" id="ridge-edit-' + r.id + '" style="width:100%;">Edit</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+async function quickToggleRidgeActive(r, newActive) {
+  const updated = Object.assign({}, r, { active: newActive });
+  try {
+    const data = await callBackend({ type: 'admin_save_ridgeline_item', password, item: updated });
+    if (data.status !== 'ok') { showToast(data.message || 'Could not update.', true); loadRidgeItems(); return; }
+    r.active = newActive;
+    renderRidgeGrid();
+    showToast(newActive ? 'Photo is now visible on the site.' : 'Photo hidden from the site.');
+  } catch (err) {
+    showToast(err.message || 'Could not reach the server.', true);
+    loadRidgeItems();
+  }
+}
+
+$('ridge-add-btn').addEventListener('click', () => openRidgeModal(null));
+$('ridge-modal-close').addEventListener('click', closeRidgeModal);
+$('ridge-cancel-btn').addEventListener('click', closeRidgeModal);
+$('ridge-modal-backdrop').addEventListener('click', (e) => { if (e.target.id === 'ridge-modal-backdrop') closeRidgeModal(); });
+
+function openRidgeModal(r) {
+  editingRidgeId = r ? r.id : null;
+  pendingRidgeImageData = null;
+  pendingRidgeImageMime = null;
+  $('rf-image').value = '';
+
+  $('ridge-modal-title').textContent = r ? 'Edit photo' : 'Add a ridgeline photo';
+  $('ridge-delete-btn').style.display = r ? 'inline-flex' : 'none';
+  $('rf-id').value = r ? r.id : '';
+  $('rf-caption').value = r ? (r.caption || '') : '';
+  $('rf-order').value = (r && r.sort_order !== undefined && r.sort_order !== null) ? r.sort_order : (ridgeItems.length);
+  $('rf-active').checked = r ? (r.active === true || String(r.active).toUpperCase() === 'TRUE') : true;
+
+  const preview = $('ridge-img-preview');
+  preview.innerHTML = (r && r.image_url) ? '<img src="' + escapeAttr(r.image_url) + '" alt="">' : '<span class="hex"></span>';
+
+  $('ridge-modal-backdrop').classList.add('open');
+}
+
+function closeRidgeModal() {
+  $('ridge-modal-backdrop').classList.remove('open');
+  editingRidgeId = null;
+}
+
+$('rf-image').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) { showToast('Photo is over 8MB — pick a smaller one.', true); e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = reader.result; // data:image/jpeg;base64,AAAA...
+    const commaIdx = result.indexOf(',');
+    pendingRidgeImageData = result.slice(commaIdx + 1);
+    pendingRidgeImageMime = file.type || 'image/jpeg';
+    $('ridge-img-preview').innerHTML = '<img src="' + result + '" alt="">';
+  };
+  reader.readAsDataURL(file);
+});
+
+$('ridge-save-btn').addEventListener('click', saveRidgeItem);
+
+async function saveRidgeItem() {
+  // A photo is required for a brand-new entry (there's no illustration fallback
+  // for this gallery); when editing, the existing photo is kept if none is chosen.
+  if (!editingRidgeId && !pendingRidgeImageData) {
+    showToast('Choose a photo first.', true);
+    return;
+  }
+
+  const item = {
+    id: editingRidgeId || '',
+    caption: $('rf-caption').value.trim(),
+    sort_order: Math.max(0, Math.floor(Number($('rf-order').value)) || 0),
+    image_url: editingRidgeId ? (ridgeItems.find(r => r.id === editingRidgeId)?.image_url || '') : '',
+    active: $('rf-active').checked
+  };
+
+  const payload = { type: 'admin_save_ridgeline_item', password, item: item };
+  if (pendingRidgeImageData) { payload.imageData = pendingRidgeImageData; payload.imageMimeType = pendingRidgeImageMime; }
+
+  $('ridge-save-btn').disabled = true;
+  $('ridge-save-btn-text').innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const data = await callBackend(payload);
+    if (data.status !== 'ok') { showToast(data.message || 'Could not save.', true); return; }
+    showToast(editingRidgeId ? 'Photo updated.' : 'Photo added.');
+    closeRidgeModal();
+    loadRidgeItems();
+  } catch (err) {
+    showToast(err.message || 'Could not reach the server.', true);
+  } finally {
+    $('ridge-save-btn').disabled = false;
+    $('ridge-save-btn-text').textContent = 'Save photo';
+  }
+}
+
+$('ridge-delete-btn').addEventListener('click', async () => {
+  if (!editingRidgeId) return;
+  if (!confirm('Delete this photo? This can\'t be undone.')) return;
+  try {
+    const data = await callBackend({ type: 'admin_delete_ridgeline_item', password, id: editingRidgeId });
+    if (data.status !== 'ok') { showToast(data.message || 'Could not delete.', true); return; }
+    showToast('Photo deleted.');
+    closeRidgeModal();
+    loadRidgeItems();
   } catch (err) {
     showToast(err.message || 'Could not reach the server.', true);
   }
