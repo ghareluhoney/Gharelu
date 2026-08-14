@@ -213,6 +213,7 @@
   .stock-badge.preorder{color:#7C5A22; font-style:italic;}
   .product-card h3{font-family:'Bodoni Moda',serif; font-weight:500; font-size:19px; margin-bottom:6px;}
   .product-tag{font-size:12.5px; color:rgba(36,20,8,0.55); font-weight:300; margin-bottom:8px; line-height:1.5;}
+  .product-sku{font-size:10.5px; color:rgba(36,20,8,0.4); letter-spacing:0.04em; font-weight:400; margin-bottom:8px; display:block; font-family:'Jost',sans-serif;}
   .product-desc{
     font-size:12.5px; color:rgba(36,20,8,0.5); font-weight:300; line-height:1.55; margin-bottom:14px;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
@@ -310,7 +311,8 @@
   .cart-item .thumb img.product-photo{width:100%; height:100%; object-fit:cover;}
   .cart-item-info{flex:1;}
   .cart-item-info h4{font-family:'Bodoni Moda',serif; font-size:15.5px; font-weight:500; margin-bottom:4px;}
-  .cart-item-info .p{font-size:13px; color:rgba(36,20,8,0.55); margin-bottom:10px;}
+  .cart-item-info .p{font-size:13px; color:rgba(36,20,8,0.55); margin-bottom:4px;}
+  .cart-item-info .sku{font-size:11px; color:rgba(36,20,8,0.4); margin-bottom:10px;}
   .cart-item-info .preorder-note{font-size:11.5px; color:var(--amber-deep); font-style:italic; margin-bottom:8px;}
   .qty-control{display:flex; align-items:center; gap:12px;}
   .qty-control button{width:22px; height:22px; border:1px solid var(--line-dark); border-radius:50%; font-size:13px; display:flex; align-items:center; justify-content:center;}
@@ -637,6 +639,7 @@
           const imageRaw = cleanText(row.image_url, 600);
           return {
             id: cleanText(row.id, 64),
+            sku: cleanText(row.sku, 40),
             name: {
               en: cleanText(row.name || row.id, 120),
               np: cleanText(row.name || row.id, 120)
@@ -816,7 +819,7 @@
       'checkout.preorderNote':'This order includes pre-order item(s), which will ship once restocked — everything else ships as usual.',
       'confirm.title':'Order placed',
       'confirm.p1':"Thank you — your honey is being pulled from this week's harvest log.",
-      'confirm.order':'Order','confirm.p2':"We'll email you to confirm payment and shipping — nothing has been charged yet.",
+      'confirm.order':'Order ID:-','confirm.p2':"We'll email you to confirm payment and shipping — nothing has been charged yet.",
       'confirm.preorderNote':'Heads up: part of this order is on pre-order and will ship once that jar is restocked.',
       'confirm.close':'Close',
     },
@@ -882,7 +885,7 @@
       'checkout.preorderNote':'यस अर्डरमा पूर्व-अर्डर वस्तु समावेश छ, जुन पुनःस्टक भएपछि पठाइनेछ — बाँकी वस्तु सामान्य रूपमै पठाइनेछ।',
       'confirm.title':'अर्डर राखियो',
       'confirm.p1':'धन्यवाद — तपाईंको महमौरी यस साताको संकलन लगबाट झिकिँदैछ।',
-      'confirm.order':'अर्डर','confirm.p2':'भुक्तानी र ढुवानी सुनिश्चित गर्न हामी तपाईंलाई इमेल गर्नेछौं — हाल कुनै रकम असुल गरिएको छैन।',
+      'confirm.order':'अर्डर आईडी:-','confirm.p2':'भुक्तानी र ढुवानी सुनिश्चित गर्न हामी तपाईंलाई इमेल गर्नेछौं — हाल कुनै रकम असुल गरिएको छैन।',
       'confirm.preorderNote':'जानकारी: यस अर्डरको एक भाग पूर्व-अर्डरमा छ र सो बोतल पुनःस्टक भएपछि मात्र पठाइनेछ।',
       'confirm.close':'बन्द गर्नुहोस्',
     }
@@ -1057,6 +1060,7 @@
         <div class="jar-frame">${productVisual(p)}</div>
         <h3>${escapeHtml(p.name[LANG] || p.name.en)}</h3>
         <p class="product-tag">${escapeHtml(p.tag[LANG] || p.tag.en)}</p>
+        ${p.sku ? `<span class="product-sku">SKU: ${escapeHtml(p.sku)}</span>` : ''}
         ${desc ? `<p class="product-desc">${escapeHtml(desc)}</p>` : ''}
         ${stockBadge}
         <div class="product-row">
@@ -1146,6 +1150,7 @@
           <div class="cart-item-info">
             <h4>${escapeHtml(p.name[LANG] || p.name.en)}</h4>
             <div class="p">${formatPrice(p.price)}</div>
+            ${p.sku ? `<div class="sku">SKU: ${escapeHtml(p.sku)}</div>` : ''}
             ${preorderItem ? `<div class="preorder-note">${escapeHtml(t('products.preorder'))} — ${escapeHtml(t('cart.preorderItemNote'))}</div>` : ''}
             <div class="qty-control">
               <button data-act="dec" data-id="${escapeHtml(id)}" aria-label="Decrease quantity">−</button>
